@@ -42,3 +42,10 @@ python run_demo.py --input data/raw/voice.wav --scale Cmajor --strength 0.7
 - [ ] Week 5-6: full pipeline + customization features
 - [ ] Week 6: formant preservation, Z-transform filter
 - [ ] Week 7: report + demo polish
+
+
+
+
+# Additional Info for Future (if i forget):
+python -m venv .venv source .venv/bin/activate (on Windows: .venv\Scripts\activate) pip install -r requirements.txt 
+This keeps your dependencies isolated and matches what's already in requirements.txt.
