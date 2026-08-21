@@ -139,7 +139,7 @@ if __name__ == "__main__":
     # Using a generated tone here since this environment has no mic.
     # On your own machine, swap this for: record_from_mic() or load_wav("your_file.wav")
     audio, sr = generate_test_tone(freq=220.0, duration_sec=1.0)
-    audio, sr = record_from_mic(duration_sec=3)
+    #audio, sr = record_from_mic(duration_sec=3)
     audio = normalize(audio)
 
     print(f"Signal length: {len(audio)} samples, sample rate: {sr} Hz")
