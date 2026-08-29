@@ -153,3 +153,5 @@ if __name__ == "__main__":
 
     print("\nWeek 1 pipeline check: OK")
     print("Next: implement autocorrelation-based pitch detection on each frame.")
+
+    print("will start week2 ")
