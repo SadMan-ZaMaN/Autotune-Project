@@ -42,3 +42,17 @@ and writes the result to `data/processed/reconstructed_test.wav`.
 - [ ] Week 5-6: full pipeline + customization features (scale selector, correction strength)
 - [ ] Week 6: formant preservation, Z-transform preprocessing filter
 - [ ] Week 7: report + demo polish
+
+
+
+
+
+## Shared Workflow
+- [x] Week 1: signal I/O, framing, windowing, overlap-add reconstruction
+- [x] Week 2: autocorrelation pitch detection
+- [x] Note/scale quantization (MIDI mapping, nearest-note snapping)
+- [ ] Week 3: naive resampling pitch shift (Sadman) + Z-transform filter module (Rajin)
+- [ ] Week 4-5: phase vocoder pitch shifting (Sadman) + visualization functions (Rajin)
+- [ ] Week 5-6: pipeline integration (joint) + customization config (Rajin)
+- [ ] Week 6: formant preservation (Sadman) + filter wired into pipeline (Rajin)
+- [ ] Week 7: report + demo polish + UI (shared)
