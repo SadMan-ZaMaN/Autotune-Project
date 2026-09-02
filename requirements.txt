@@ -1,6 +1,5 @@
 numpy
 scipy
-librosa
 soundfile
 sounddevice
 matplotlib

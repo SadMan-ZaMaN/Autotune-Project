@@ -4,19 +4,16 @@ CSE 220 (Signals and Linear Systems) Sessional Project — Team "Cells Interlink
 
 A DSP-based pitch correction tool built from scratch: detects the pitch of a
 recorded voice using autocorrelation, quantizes it to the nearest note in a
-chosen musical scale, and shifts pitch using an STFT-based phase vocoder —
-the same core technique behind commercial autotune tools.
-
-## Features
-- Selectable musical scale/key (C major, A minor, chromatic, custom)
-- Adjustable correction strength/speed (natural <-> classic robotic hard-tune)
-- Naive resampling vs. phase-vocoder pitch-shift comparison (demonstrates aliasing)
-- Formant preservation (stretch goal)
-- Z-transform-designed preprocessing filter with pole-zero / stability analysis
+chosen musical scale, and (upcoming) shifts pitch using an STFT-based phase
+vocoder — the same core technique behind commercial autotune tools.
 
 ## Project layout
-- `src/autotune/` — core package, one module per pipeline stage
-- `tests/` — unit tests (e.g. pitch detection validated against known sine waves)
+- `src/autotune/config.py` — central config (sample rate, frame/hop size, window)
+- `src/autotune/io_utils.py` — WAV load/save, mono conversion, resampling
+- `src/autotune/framing.py` — framing, Hann windowing, weighted overlap-add reconstruction
+- `src/autotune/pitch_detection.py` — FFT-based autocorrelation pitch detection
+- `src/autotune/scales.py` — MIDI/frequency conversion, scale-note quantization
+- `tests/` — unit tests
 - `notebooks/` — exploration and tuning
 - `data/raw` / `data/processed` — input/output audio
 - `results/` — plots and audio samples for the report
@@ -29,23 +26,19 @@ source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Run
+## Run (current: framing + overlap-add reconstruction test)
 ```bash
-python run_demo.py --input data/raw/voice.wav --scale Cmajor --strength 0.7
+python main.py
 ```
+Reads `data/raw/test_voice.wav`, frames it, reconstructs it via overlap-add,
+and writes the result to `data/processed/reconstructed_test.wav`.
 
 ## Status
-- [x] Week 1: signal I/O, framing, windowing
-- [ ] Week 2: autocorrelation pitch detection
-- [ ] Week 3: note quantization + naive pitch shift
-- [ ] Week 4-5: phase vocoder
-- [ ] Week 5-6: full pipeline + customization features
-- [ ] Week 6: formant preservation, Z-transform filter
+- [x] Week 1: signal I/O, framing, windowing, overlap-add reconstruction
+- [x] Week 2: autocorrelation pitch detection
+- [x] Note/scale quantization (MIDI mapping, nearest-note snapping)
+- [ ] Week 3: naive resampling pitch shift (baseline for comparison)
+- [ ] Week 4-5: phase vocoder pitch shifting
+- [ ] Week 5-6: full pipeline + customization features (scale selector, correction strength)
+- [ ] Week 6: formant preservation, Z-transform preprocessing filter
 - [ ] Week 7: report + demo polish
-
-
-
-
-# Additional Info for Future (if i forget):
-python -m venv .venv source .venv/bin/activate (on Windows: .venv\Scripts\activate) pip install -r requirements.txt 
-This keeps your dependencies isolated and matches what's already in requirements.txt.
