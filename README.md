@@ -56,3 +56,5 @@ and writes the result to `data/processed/reconstructed_test.wav`.
 - [ ] Week 5-6: pipeline integration (joint) + customization config (Rajin)
 - [ ] Week 6: formant preservation (Sadman) + filter wired into pipeline (Rajin)
 - [ ] Week 7: report + demo polish + UI (shared)
+
+## will have to make presentation for this
