@@ -68,9 +68,51 @@ class AutoTuneConfig:
     agress on frame size, hop size, sample rate
     """
 
-    def __init__(self, frame_size = 2048, hop_size = 512, sample_rate = 44100):
+    def __init__(self, frame_size = 2048, hop_size = 512, sample_rate = 44100, scale_root = "C", scale_type = "major", correction_strength = 0.5):
         self.frame_size = frame_size
         self.hop_size = hop_size
         self.sample_rate = sample_rate
         self.window = np.hanning(frame_size)
 
+        # part of Week 5-6: full pipeline + customization features (scale selector, correction strength) lets work on this
+        # Part 1: Add customization fields to your existing config
+        # Customization settings for pitch correction
+        self.scale_root = scale_root            # e.g. "C", "A", "G"
+        self.scale_type = scale_type            # "major", "natural_minor", "chromatic"
+        self.correction_strength = correction_strength  # 0.0 = no correction, 1.0 = full snap
+
+
+
+
+'''                 Ajaira Comment
+
+    def __init__(......, scale_root = "C", .......):
+
+`"C"` is just the *default* value, not a fixed/permanent setting.**
+
+Here's what's actually happening: `scale_root="C"` in the function definition means "if nobody says otherwise, assume C." But anywhere you create an `AutoTuneConfig`, you can override it:
+
+```python
+config = AutoTuneConfig()                          # uses default: scale_root = "C"
+config = AutoTuneConfig(scale_root="A")             # overrides it: scale_root = "A"
+config = AutoTuneConfig(scale_root="G", correction_strength=0.5)  # overrides two things
+```
+
+This is exactly why `run_demo.py` works the way it does — when you write:
+```python
+config = AutoTuneConfig(scale_root=SCALE_ROOT, scale_type=SCALE_TYPE, correction_strength=CORRECTION_STRENGTH)
+```
+whatever value you typed for `SCALE_ROOT` at the top of `run_demo.py` (like `"A"` or `"G"`) gets passed in and *replaces* the default `"C"` for that particular run.
+
+**So to actually test a different scale**, just change the variable in `run_demo.py`:
+```python
+SCALE_ROOT = "A"
+SCALE_TYPE = "natural_minor"
+```
+and rerun — your pipeline will now snap pitches to A natural minor instead of C major.
+
+The `"C"` default just means: if you (or Rajin, or anyone using your code) forget to specify a scale, it won't crash — it'll safely fall back to C major rather than erroring out.
+
+
+
+'''
