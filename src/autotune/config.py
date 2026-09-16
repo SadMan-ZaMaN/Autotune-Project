@@ -68,7 +68,7 @@ class AutoTuneConfig:
     agress on frame size, hop size, sample rate
     """
 
-    def __init__(self, frame_size = 2048, hop_size = 512, sample_rate = 44100, scale_root = "C", scale_type = "major", correction_strength = 0.5):
+    def __init__(self, frame_size = 2048, hop_size = 512, sample_rate = 44100, scale_root = "C", scale_type = "major", correction_strength = 1.0):
         self.frame_size = frame_size
         self.hop_size = hop_size
         self.sample_rate = sample_rate

@@ -8,6 +8,7 @@ from .pitch_detection import detect_pitch_for_all_frames
 from .scales import build_scale_midi_set, nearest_scale_note
 from .pitch_shift import compute_shift_ratios, naive_pitch_shift
 from .phase_vocoder import phase_vocoder_shift
+from .filters import design_preemphasis_filter, apply_filter
 
 """
 run_pipeline: Full Autotune Chain, Start to Finish
@@ -24,7 +25,7 @@ Nothing new is invented here - this function just calls, in order, the
 functions you already built and verified separately.
 """
 
-def run_pipeline(input_path, config, use_phase_vocoder=True):
+def run_pipeline(input_path, config, use_phase_vocoder=True, use_preemphasis=True):
     """
     input_path: str - path to a WAV file to correct
     config: AutoTuneConfig - holds frame_size, hop_size, sample_rate,
@@ -37,7 +38,23 @@ def run_pipeline(input_path, config, use_phase_vocoder=True):
         original_audio, corrected_audio, sample_rate,
         detected_pitches, target_pitches, shift_ratios
     """
-    audio, sr = load_audio(input_path, target_sr=config.sample_rate)
+
+
+    raw_audio, sr = load_audio(input_path, target_sr=config.sample_rate)
+    audio = raw_audio
+
+        # Pre-emphasis filter: boosts high frequencies before pitch detection,
+        # since voice naturally has weaker high-frequency energy (see filters.py
+        # docstring). This is Rajin's Z-transform-designed filter (see
+        # results/plots for pole-zero and frequency response analysis).
+        # NOTE: we keep raw_audio untouched separately so report plots can
+        # honestly compare "true original" vs "final corrected", rather than
+        # comparing an already-filtered signal as if it were the original.
+
+    if use_preemphasis:
+        b, a = design_preemphasis_filter(coeff=0.95)
+        audio = apply_filter(audio, b, a)
+
     frames, pad_len = frame_signal(audio, config)
 
     detected_pitches = detect_pitch_for_all_frames(frames, sr)
@@ -65,6 +82,7 @@ def run_pipeline(input_path, config, use_phase_vocoder=True):
     corrected_audio = overlap_add(shifted_frames, config, pad_len)
 
     return {
+        "raw_audio": raw_audio,
         "original_audio": audio,
         "corrected_audio": corrected_audio,
         "sample_rate": sr,
