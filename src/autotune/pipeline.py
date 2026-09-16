@@ -6,7 +6,7 @@ from .io_utils import load_audio, save_audio
 from .framing import frame_signal, overlap_add
 from .pitch_detection import detect_pitch_for_all_frames
 from .scales import build_scale_midi_set, nearest_scale_note
-from .pitch_shift import compute_shift_ratios, naive_pitch_shift
+from .pitch_shift import compute_shift_ratios, smooth_shift_ratios, naive_pitch_shift
 from .phase_vocoder import phase_vocoder_shift
 from .filters import design_preemphasis_filter, apply_filter
 
@@ -71,6 +71,8 @@ def run_pipeline(input_path, config, use_phase_vocoder=True, use_preemphasis=Tru
 
     shift_ratios = compute_shift_ratios(detected_pitches, target_pitches,
                                          config.correction_strength)
+
+    shift_ratios = smooth_shift_ratios(shift_ratios, detected_pitches, config.hop_size, config.sample_rate, config.retune_ms)
 
     if use_phase_vocoder:
         shifted_frames = phase_vocoder_shift(frames, shift_ratios, config)

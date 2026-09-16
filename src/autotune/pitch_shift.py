@@ -110,3 +110,55 @@ def compute_shift_ratios(detected_pitches, target_pitches, strength=1.0):
     ratios[voiced] = raw_ratio[voiced] ** strength
 
     return ratios
+
+
+
+def smooth_shift_ratios(shift_ratios, detected_pitches, hop_size, sample_rate, retune_ms=40.0):
+    """
+    Smooths the per-frame correction ratio over time so pitch glides toward
+    the target note instead of snapping fully in a single ~11ms frame. This
+    is what separates a natural-sounding correction from the hard, robotic
+    "T-Pain" snap - compute_shift_ratios() alone recomputes a fresh target
+    every frame with no memory of the previous frame, so any jitter in the
+    detected pitch (very normal with autocorrelation + natural vibrato)
+    shows up directly as flutter in the corrected audio.
+
+    Uses an exponential moving average in the LOG of the ratio, not the raw
+    ratio - shift ratios are multiplicative (a ratio of 2.0 up and 0.5 down
+    are equally "one octave"), so averaging in log space is what keeps the
+    glide symmetric between upward and downward corrections.
+
+    The average resets at the start of every voiced run (i.e. after a
+    silence/unvoiced gap) so a new note starts clean instead of gliding in
+    from whatever the previous note's ratio happened to be.
+
+    retune_ms: how many milliseconds it takes to glide most of the way to
+    the target pitch.
+      0        -> no smoothing at all (identical to the old instant-snap behavior)
+      ~30-80   -> natural-sounding correction
+      100+     -> audible pitch bends/glides rather than a "correction"
+    """
+    if retune_ms <= 0:
+        return shift_ratios
+
+    log_ratios = np.log(shift_ratios.astype(np.float64))
+    smoothed_log = np.zeros_like(log_ratios)
+
+    hop_time_ms = (hop_size / sample_rate) * 1000.0
+    alpha = 1.0 - np.exp(-hop_time_ms / retune_ms)
+
+    prev = None
+    for i in range(len(log_ratios)):
+        if detected_pitches[i] <= 0:
+            # unvoiced: nothing to glide, and reset so the next note doesn't
+            # inherit a stale glide-in-progress from before the gap
+            smoothed_log[i] = log_ratios[i]
+            prev = None
+            continue
+        if prev is None:
+            smoothed_log[i] = log_ratios[i]  # first voiced frame of a run: start clean, no glide-in
+        else:
+            smoothed_log[i] = prev + alpha * (log_ratios[i] - prev)
+        prev = smoothed_log[i]
+
+    return np.exp(smoothed_log).astype(np.float32)

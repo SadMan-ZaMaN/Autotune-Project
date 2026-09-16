@@ -68,7 +68,7 @@ class AutoTuneConfig:
     agress on frame size, hop size, sample rate
     """
 
-    def __init__(self, frame_size = 2048, hop_size = 512, sample_rate = 44100, scale_root = "C", scale_type = "major", correction_strength = 1.0):
+    def __init__(self, frame_size = 2048, hop_size = 512, sample_rate = 44100, scale_root = "C", scale_type = "major", correction_strength = 1.0, retune_ms = 40.0):
         self.frame_size = frame_size
         self.hop_size = hop_size
         self.sample_rate = sample_rate
@@ -80,6 +80,11 @@ class AutoTuneConfig:
         self.scale_root = scale_root            # e.g. "C", "A", "G"
         self.scale_type = scale_type            # "major", "natural_minor", "chromatic"
         self.correction_strength = correction_strength  # 0.0 = no correction, 1.0 = full snap
+
+        # How many ms it takes the correction to glide to the target note.
+        # 0 = instant/robotic snap every frame (old behavior).
+        # ~30-80 = natural-sounding correction. See pitch_shift.smooth_shift_ratios.
+        self.retune_ms = retune_ms
 
 
 
