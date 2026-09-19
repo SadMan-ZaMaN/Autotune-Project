@@ -25,7 +25,7 @@ Nothing new is invented here - this function just calls, in order, the
 functions you already built and verified separately.
 """
 
-def run_pipeline(input_path, config, use_phase_vocoder=True, use_preemphasis=True):
+def run_pipeline(input_path, config, use_phase_vocoder=True, use_preemphasis=True, use_formant_preservation=True):
     """
     input_path: str - path to a WAV file to correct
     config: AutoTuneConfig - holds frame_size, hop_size, sample_rate,
@@ -33,6 +33,9 @@ def run_pipeline(input_path, config, use_phase_vocoder=True, use_preemphasis=Tru
     use_phase_vocoder: bool - True uses phase_vocoder_shift, False uses
                        naive_pitch_shift (useful for generating comparison
                        clips for your report)
+    use_formant_preservation: bool - True uses formant preservation to maintain
+                              the natural resonances of the voice during pitch
+                              shifting.
 
     Returns a dict with everything useful for saving audio or making plots:
         original_audio, corrected_audio, sample_rate,
@@ -76,6 +79,10 @@ def run_pipeline(input_path, config, use_phase_vocoder=True, use_preemphasis=Tru
 
     if use_phase_vocoder:
         shifted_frames = phase_vocoder_shift(frames, shift_ratios, config)
+        if use_formant_preservation:
+            from .phase_vocoder import formant_preserve
+            for i in range(len(frames)):
+                shifted_frames[i] = formant_preserve(shifted_frames[i], frames[i], config)
     else:
         shifted_frames = np.zeros_like(frames)
         for i in range(len(frames)):

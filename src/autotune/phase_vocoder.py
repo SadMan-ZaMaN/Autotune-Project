@@ -219,7 +219,109 @@ def phase_vocoder_shift(frames, shift_ratios, config):
 
 
 
+"""
+Formant Preservation
+=======================
+Problem: when the phase vocoder shifts pitch, it also drags your voice's
+natural resonances (formants) along with it - a large shift makes you sound
+like you inhaled helium ("chipmunk effect"), because the ENTIRE spectral
+shape moved, not just the pitch.
 
+The fix separates two things that are tangled together in a voice signal:
+  - PITCH: which note is being sung (fast-changing, the harmonic "comb")
+  - FORMANTS: what your voice naturally sounds like (slow-changing, the
+    overall spectral SHAPE/envelope that harmonics sit inside)
+
+We want to shift pitch but keep formants fixed. The technique below
+("cepstral smoothing") separates them using the same FFT tools you already
+trust:
+
+    take the log of the magnitude spectrum
+    -> inverse FFT it (this gives something called a "cepstrum")
+    -> keep only the first ~30 values, zero out the rest
+    -> FFT back
+
+This works because in this transformed domain, the SLOW-changing formant
+shape lives in the first few coefficients, and the FAST-changing pitch
+harmonic detail lives in the later ones - so keeping only the first ~30
+acts like a low-pass filter that isolates just the formant shape.
+"""
+
+def compute_spectral_envelope(frame, config, num_coeffs=30):
+    """
+    Extracts the smooth "formant shape" of a frame, discarding the sharp
+    pitch-harmonic detail.
+
+    frame: np.ndarray, shape (frame_size,) - a time-domain audio frame
+    num_coeffs: how many low-quefrency cepstral coefficients to keep.
+                Smaller = smoother envelope (risk: loses real formant
+                detail). Larger = keeps more detail (risk: starts leaking
+                pitch harmonic bumps back in). ~20-40 is a reasonable range
+                for voice at our frame_size/sample_rate settings.
+
+    Returns: np.ndarray, shape (frame_size//2 + 1,) - the smooth envelope,
+    same number of bins as a normal rfft magnitude spectrum.
+    """
+    spectrum = np.fft.rfft(frame)
+    log_magnitude = np.log(np.abs(spectrum) + 1e-8)  # +1e-8 avoids log(0)
+
+    # Inverse FFT of the LOG magnitude gives the "cepstrum" - not audio,
+    # just a mathematical trick, but genuinely computed the same way as any
+    # other inverse FFT you've already used.
+    cepstrum = np.fft.irfft(log_magnitude, n=config.frame_size)
+
+    # Liftering: zero out everything except the first and last few
+    # coefficients (keeping both ends is required for the signal to stay
+    # real-valued when we transform back, same symmetry reasoning as rfft).
+    liftered = np.zeros_like(cepstrum)
+    liftered[:num_coeffs] = cepstrum[:num_coeffs]
+    liftered[-(num_coeffs - 1):] = cepstrum[-(num_coeffs - 1):]
+
+    # Transform back: this is now a SMOOTHED version of the log spectrum
+    smooth_log_magnitude = np.fft.rfft(liftered, n=config.frame_size).real
+    envelope = np.exp(smooth_log_magnitude)
+    return envelope
+
+
+def formant_preserve(shifted_frame, original_frame, config, num_coeffs=30):
+    """
+    Corrects a pitch-shifted frame so it keeps the ORIGINAL frame's formant
+    shape instead of the shifted frame's (accidentally moved) formant shape.
+
+    shifted_frame: np.ndarray, shape (frame_size,) - output of the phase
+                   vocoder for this frame (pitch already shifted)
+    original_frame: np.ndarray, shape (frame_size,) - the SAME frame before
+                     shifting (the natural, correct-formant version)
+    config: AutoTuneConfig
+
+    Returns: np.ndarray, shape (frame_size,) - the shifted frame, with its
+    formant shape corrected back to match the original voice's natural shape.
+    """
+    # Step 1: what formant shape did we START with? (the one we want to keep)
+    orig_envelope = compute_spectral_envelope(original_frame, config, num_coeffs)
+
+    # Step 2: break the SHIFTED frame into magnitude + phase (same as
+    # compute_stft in the phase vocoder - we need both pieces separately)
+    shifted_spectrum = np.fft.rfft(shifted_frame)
+    shifted_magnitude = np.abs(shifted_spectrum)
+    shifted_phase = np.angle(shifted_spectrum)
+
+    # Step 3: what formant shape did the SHIFTED frame accidentally end up
+    # with? (this is the "wrong" shape we want to remove)
+    shifted_envelope = compute_spectral_envelope(shifted_frame, config, num_coeffs)
+
+    # Step 4: remove the shifted frame's own (wrong) envelope by dividing
+    # it out, then multiply in the original (correct) envelope instead.
+    # This keeps the shifted frame's actual pitch/harmonics exactly as they
+    # are - only the overall SHAPE draped over them changes.
+    corrected_magnitude = shifted_magnitude / (shifted_envelope + 1e-8) * orig_envelope
+
+    # Step 5: rebuild the frame using the corrected magnitude, but the
+    # SHIFTED frame's phase (we want to keep the new pitch's timing, only
+    # the tonal shape is being corrected)
+    corrected_spectrum = corrected_magnitude * (np.cos(shifted_phase) + 1j * np.sin(shifted_phase))
+    frame = np.fft.irfft(corrected_spectrum, n=config.frame_size)
+    return frame.astype(np.float32)
 
 
 '''
