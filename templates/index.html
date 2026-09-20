@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console — Pitch Correction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="hero">
+  <canvas id="scope" class="scope"></canvas>
+  <div class="hero-label">
+    <h1>Console</h1>
+    <p>Pitch correction, built from a phase vocoder — CSE 220 signals project</p>
+  </div>
+</header>
+
+<main class="panel">
+
+  <section class="rack source-rack">
+    <h2 class="rack-title">Source</h2>
+
+    <div class="dropzone" id="dropzone">
+      <p id="dropzone-text">Drop a WAV file, or click to choose one</p>
+      <input type="file" id="file-input" accept="audio/wav,audio/x-wav" hidden>
+    </div>
+
+    <button class="btn secondary" id="record-btn">Record from microphone</button>
+    <span class="record-status" id="record-status"></span>
+
+    <div class="trace-block">
+      <div class="trace-label">Input signal</div>
+      <canvas id="trace-input" class="trace"></canvas>
+      <audio id="audio-input" controls></audio>
+    </div>
+  </section>
+
+  <section class="rack controls-rack">
+    <h2 class="rack-title">Correction</h2>
+
+    <div class="field-row">
+      <label for="scale-root">Key</label>
+      <select id="scale-root">
+        <option>C</option><option>C#</option><option>D</option><option>D#</option>
+        <option>E</option><option>F</option><option>F#</option><option>G</option>
+        <option>G#</option><option>A</option><option>A#</option><option>B</option>
+      </select>
+      <select id="scale-type">
+        <option value="major">Major</option>
+        <option value="natural_minor">Natural minor</option>
+        <option value="chromatic">Chromatic</option>
+      </select>
+    </div>
+
+    <div class="field-row slider-row">
+      <label for="strength">Correction strength</label>
+      <input type="range" id="strength" min="0" max="1" step="0.01" value="1.0">
+      <span class="readout" id="strength-readout">1.00</span>
+    </div>
+
+    <div class="field-row slider-row">
+      <label for="retune">Retune speed</label>
+      <input type="range" id="retune" min="0" max="150" step="5" value="40">
+      <span class="readout" id="retune-readout">40 ms</span>
+    </div>
+
+    <div class="toggle-group">
+      <label class="toggle"><input type="checkbox" id="use-phase-vocoder" checked><span>Phase vocoder</span></label>
+      <label class="toggle"><input type="checkbox" id="use-formant" checked><span>Formant preservation</span></label>
+      <label class="toggle"><input type="checkbox" id="use-preemphasis" checked><span>Pre-emphasis filter</span></label>
+    </div>
+
+    <button class="btn primary" id="run-btn" disabled>Run correction</button>
+    <p class="status-line" id="status-line"></p>
+  </section>
+
+  <section class="rack output-rack">
+    <h2 class="rack-title">Output</h2>
+
+    <div class="trace-block">
+      <div class="trace-label">Corrected signal</div>
+      <canvas id="trace-output" class="trace"></canvas>
+      <audio id="audio-output" controls></audio>
+    </div>
+
+    <a class="btn secondary" id="download-btn" download="corrected.wav" style="display:none">Download corrected.wav</a>
+  </section>
+
+</main>
+
+<footer class="statusbar" id="statusbar">44.1 kHz · frame 2048 · hop 512 · C major · strength 1.00 · retune 40 ms</footer>
+
+<script src="/static/script.js"></script>
+</body>
+</html>
