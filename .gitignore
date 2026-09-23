@@ -2,7 +2,9 @@ __pycache__/
 *.pyc
 .venv/
 
-# files the web app creates for every job (uploads, results, before/after tracks)
-data/raw/upload_*.wav
-data/processed/result_*.wav
-data/processed/original_*.wav
+# audio inputs/outputs stay on your own computer, never on GitHub
+# (.gitkeep keeps the empty folders so the scripts can still save into them)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
