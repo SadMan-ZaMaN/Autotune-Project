@@ -74,3 +74,50 @@ def nearest_scale_note(frequency, scale_midi_set):
     nearest_midi = scale_midi_set[idx]
 
     return midi_to_freq(nearest_midi)
+
+
+def choose_target_notes(detected_pitches, scale_midi_set, tuning_offset_cents=0.0, hysteresis=0.3):
+    """
+    Picks the target note for every frame (0.0 for unvoiced frames).
+
+    Why not just nearest_scale_note() on every frame independently?
+    Imagine someone singing right between C and D (MIDI 61.0), with a
+    little natural wobble: 60.9, 61.1, 60.95, 61.05 ...
+    nearest-note alone would answer C, D, C, D ... - the correction flips
+    between two notes 40 times a second, heard as a nasty warble. Real
+    singers don't change notes that fast, so we add HYSTERESIS (the same
+    idea as a thermostat or a Schmitt trigger): once we've picked a note we
+    stay on it until the voice is clearly closer to another scale note -
+    closer by more than `hysteresis` semitones.
+
+    Example (C major, current note C=60, hysteresis=0.3):
+        sung 61.05: |61.05-60| - |61.05-62| = 1.05 - 0.95 = 0.10 < 0.3 -> stay on C
+        sung 61.20: 1.20 - 0.80 = 0.40 > 0.3                          -> switch to D
+    A new note (after a silence) always starts on the plain nearest note.
+
+    tuning_offset_cents: the singer's overall offset from standard tuning
+    (see key_detection.estimate_tuning_offset). The whole scale is slid by
+    this amount, so a singer who is consistently 40 cents sharp is kept
+    consistent with THEMSELVES instead of having some notes pulled down
+    and others pushed up.
+    """
+    offset = tuning_offset_cents / 100.0
+    targets = np.zeros(len(detected_pitches))
+    current = None   # MIDI number of the note we're currently holding
+
+    for i in range(len(detected_pitches)):
+        f = detected_pitches[i]
+        if f <= 0:
+            current = None
+            continue
+        midi = freq_to_midi(f) - offset
+        nearest = scale_midi_set[np.argmin(np.abs(scale_midi_set - midi))]
+
+        if current is None:
+            current = nearest
+        elif nearest != current:
+            if abs(midi - current) - abs(midi - nearest) > hysteresis:
+                current = nearest
+
+        targets[i] = midi_to_freq(current + offset)
+    return targets

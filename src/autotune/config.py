@@ -68,7 +68,9 @@ class AutoTuneConfig:
     agress on frame size, hop size, sample rate
     """
 
-    def __init__(self, frame_size = 2048, hop_size = 512, sample_rate = 44100, scale_root = "C", scale_type = "major", correction_strength = 1.0, retune_ms = 40.0):
+    def __init__(self, frame_size = 2048, hop_size = 512, sample_rate = 44100, scale_root = "C", scale_type = "major", correction_strength = 1.0, retune_ms = 40.0,
+                 auto_key = False, follow_singer_tuning = False, note_hysteresis = 0.3,
+                 studio_polish = False, reverb_amount = 0.2):
         self.frame_size = frame_size
         self.hop_size = hop_size
         self.sample_rate = sample_rate
@@ -85,6 +87,21 @@ class AutoTuneConfig:
         # 0 = instant/robotic snap every frame (old behavior).
         # ~30-80 = natural-sounding correction. See pitch_shift.smooth_shift_ratios.
         self.retune_ms = retune_ms
+
+        # auto_key: ignore scale_root/scale_type and detect the key from the
+        #   recording itself (key_detection.detect_key).
+        # follow_singer_tuning: slide the scale by the singer's overall
+        #   sharp/flat offset (key_detection.estimate_tuning_offset).
+        # note_hysteresis: semitones the voice must be "clearly closer" to a
+        #   new note before the target switches (scales.choose_target_notes).
+        self.auto_key = auto_key
+        self.follow_singer_tuning = follow_singer_tuning
+        self.note_hysteresis = note_hysteresis
+
+        # studio_polish: EQ + compressor + reverb + loudness (effects.py)
+        # reverb_amount: 0 = dry, 0.2 = produced, 0.35+ = big hall
+        self.studio_polish = studio_polish
+        self.reverb_amount = reverb_amount
 
 
 

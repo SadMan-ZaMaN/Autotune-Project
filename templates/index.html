@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Console — Pitch Correction</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314171A'/%3E%3Cpath d='M3 16c3-9 6-9 9 0s6 9 9 0 5-7 8-2' fill='none' stroke='%23E8A33D' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
@@ -14,84 +15,149 @@
   <canvas id="scope" class="scope"></canvas>
   <div class="hero-label">
     <h1>Console</h1>
-    <p>Pitch correction, built from a phase vocoder — CSE 220 signals project</p>
+    <p>Pitch correction built from scratch — autocorrelation pitch detection and a phase vocoder. CSE 220 signals project.</p>
   </div>
 </header>
 
 <main class="panel">
 
+  <!-- ============ 1. VOICE ============ -->
   <section class="rack source-rack">
-    <h2 class="rack-title">Source</h2>
+    <h2 class="rack-title"><span class="step">01</span> Your voice</h2>
 
-    <div class="dropzone" id="dropzone">
-      <p id="dropzone-text">Drop a WAV file, or click to choose one</p>
-      <input type="file" id="file-input" accept="audio/wav,audio/x-wav" hidden>
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose an audio file">
+      <p class="dz-main" id="dropzone-text">Drop a recording here, or click to choose</p>
+      <p class="dz-sub">WAV · MP3 · M4A · FLAC · OGG · any length</p>
+      <input type="file" id="file-input" accept="audio/*,video/mp4,video/webm,.m4a,.mp3,.wav,.flac,.ogg,.aac,.webm,.opus" hidden>
     </div>
 
-    <button class="btn secondary" id="record-btn">Record from microphone</button>
-    <span class="record-status" id="record-status"></span>
+    <div class="or-divider"><span>or</span></div>
 
-    <div class="trace-block">
-      <div class="trace-label">Input signal</div>
+    <div class="recorder">
+      <button class="btn record-btn" id="record-btn" type="button">
+        <span class="rec-dot"></span><span id="record-label">Record with microphone</span>
+      </button>
+      <div class="rec-meter" id="rec-meter" hidden>
+        <span class="rec-time" id="rec-time">0:00</span>
+        <div class="meter"><div class="meter-fill" id="meter-fill"></div></div>
+      </div>
+      <p class="hint">No time limit. For best results: voice only (no music playing), a quiet room, mouth about a hand-width from the mic.</p>
+    </div>
+
+    <p class="status-line error" id="source-error"></p>
+
+    <div class="trace-block" id="input-block" hidden>
+      <div class="trace-label"><span>Input</span><span id="input-meta"></span></div>
       <canvas id="trace-input" class="trace"></canvas>
       <audio id="audio-input" controls></audio>
     </div>
   </section>
 
+  <!-- ============ 2. STYLE ============ -->
   <section class="rack controls-rack">
-    <h2 class="rack-title">Correction</h2>
+    <h2 class="rack-title"><span class="step">02</span> Style</h2>
 
-    <div class="field-row">
-      <label for="scale-root">Key</label>
-      <select id="scale-root">
-        <option>C</option><option>C#</option><option>D</option><option>D#</option>
-        <option>E</option><option>F</option><option>F#</option><option>G</option>
-        <option>G#</option><option>A</option><option>A#</option><option>B</option>
-      </select>
-      <select id="scale-type">
-        <option value="major">Major</option>
-        <option value="natural_minor">Natural minor</option>
-        <option value="chromatic">Chromatic</option>
-      </select>
+    <div class="presets" id="presets" role="radiogroup" aria-label="Style preset"></div>
+
+    <div class="field-row key-row">
+      <label for="scale-root">Key <span class="label-note">— leave on Auto if you don't know it</span></label>
+      <div class="key-selects">
+        <select id="scale-root">
+          <option value="auto" selected>Auto-detect (recommended)</option>
+          <option>C</option><option>C#</option><option>D</option><option>D#</option>
+          <option>E</option><option>F</option><option>F#</option><option>G</option>
+          <option>G#</option><option>A</option><option>A#</option><option>B</option>
+        </select>
+        <select id="scale-type" disabled>
+          <option value="major">Major</option>
+          <option value="natural_minor">Minor</option>
+          <option value="chromatic">All 12 notes</option>
+        </select>
+      </div>
     </div>
 
-    <div class="field-row slider-row">
-      <label for="strength">Correction strength</label>
-      <input type="range" id="strength" min="0" max="1" step="0.01" value="1.0">
-      <span class="readout" id="strength-readout">1.00</span>
-    </div>
+    <details class="advanced" id="advanced">
+      <summary>Fine-tune <span class="label-note">(optional)</span></summary>
 
-    <div class="field-row slider-row">
-      <label for="retune">Retune speed</label>
-      <input type="range" id="retune" min="0" max="150" step="5" value="40">
-      <span class="readout" id="retune-readout">40 ms</span>
-    </div>
+      <div class="field-row slider-row">
+        <label for="strength">Correction strength <span class="label-note">how far notes are pulled onto pitch</span></label>
+        <input type="range" id="strength" min="0" max="1" step="0.01" value="1.0">
+        <span class="readout" id="strength-readout">100%</span>
+      </div>
 
-    <div class="toggle-group">
-      <label class="toggle"><input type="checkbox" id="use-phase-vocoder" checked><span>Phase vocoder</span></label>
-      <label class="toggle"><input type="checkbox" id="use-formant" checked><span>Formant preservation</span></label>
-      <label class="toggle"><input type="checkbox" id="use-preemphasis" checked><span>Pre-emphasis filter</span></label>
-    </div>
+      <div class="field-row slider-row">
+        <label for="retune">Retune speed <span class="label-note">0 = robotic jumps · 80+ = natural slides</span></label>
+        <input type="range" id="retune" min="0" max="150" step="5" value="30">
+        <span class="readout" id="retune-readout">30 ms</span>
+      </div>
 
-    <button class="btn primary" id="run-btn" disabled>Run correction</button>
-    <p class="status-line" id="status-line"></p>
+      <div class="field-row slider-row">
+        <label for="reverb">Reverb <span class="label-note">how much "room" around the voice</span></label>
+        <input type="range" id="reverb" min="0" max="0.5" step="0.01" value="0.22">
+        <span class="readout" id="reverb-readout">22%</span>
+      </div>
+
+      <div class="toggle-group">
+        <label class="toggle"><input type="checkbox" id="use-polish" checked><span>Studio polish <em>EQ, compressor, reverb, loudness</em></span></label>
+        <label class="toggle"><input type="checkbox" id="use-follow" checked><span>Follow my tuning <em>turn off if you'll put the vocal back over music</em></span></label>
+        <label class="toggle"><input type="checkbox" id="use-formant" checked><span>Formant preservation <em>keeps your voice's character</em></span></label>
+        <label class="toggle"><input type="checkbox" id="use-phase-vocoder" checked><span>Phase vocoder <em>off = naive resampling, for comparison</em></span></label>
+        <label class="toggle"><input type="checkbox" id="use-preemphasis" checked><span>Pre-emphasis filter <em>helps the pitch detector</em></span></label>
+      </div>
+    </details>
+
+    <button class="btn primary" id="run-btn" type="button" disabled>Tune my voice</button>
+    <div class="progress" id="progress" hidden>
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      <span class="progress-stage" id="progress-stage">Starting…</span>
+    </div>
+    <p class="status-line" id="status-line">Add a recording first.</p>
   </section>
 
+  <!-- ============ 3. RESULT ============ -->
   <section class="rack output-rack">
-    <h2 class="rack-title">Output</h2>
+    <h2 class="rack-title"><span class="step">03</span> Result</h2>
 
-    <div class="trace-block">
-      <div class="trace-label">Corrected signal</div>
-      <canvas id="trace-output" class="trace"></canvas>
-      <audio id="audio-output" controls></audio>
+    <div class="empty-state" id="empty-state">
+      <p>Your tuned track will appear here, with a before/after switch and a graph of the notes you sang.</p>
     </div>
 
-    <a class="btn secondary" id="download-btn" download="corrected.wav" style="display:none">Download corrected.wav</a>
+    <div id="result" hidden>
+      <div class="player">
+        <button class="play-btn" id="play-btn" type="button" aria-label="Play">
+          <svg id="icon-play" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 4.5v15l13-7.5z" fill="currentColor"/></svg>
+          <svg id="icon-pause" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" hidden><path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>
+        </button>
+        <div class="ab-switch" role="radiogroup" aria-label="Which version to hear">
+          <button type="button" class="ab-option" data-side="original" role="radio" aria-checked="false">Original</button>
+          <button type="button" class="ab-option active" data-side="tuned" role="radio" aria-checked="true">Tuned</button>
+        </div>
+        <span class="play-time" id="play-time">0:00 / 0:00</span>
+        <a class="btn secondary download-btn" id="download-btn" download="tuned.wav">Download tuned.wav</a>
+      </div>
+      <p class="hint">Switch between Original and Tuned while it plays — or press <kbd>T</kbd>. <kbd>Space</kbd> plays/pauses.</p>
+
+      <div class="trace-block">
+        <div class="trace-label"><span id="wave-label">Tuned signal</span><span>click to jump</span></div>
+        <canvas id="trace-output" class="trace seekable"></canvas>
+      </div>
+
+      <div class="trace-block">
+        <div class="trace-label">
+          <span>Notes over time</span>
+          <span class="legend"><i class="sw sw-in"></i>you sang <i class="sw sw-out"></i>after tuning <i class="sw sw-key"></i>notes of the key</span>
+        </div>
+        <canvas id="pitch-graph" class="pitch-graph seekable"></canvas>
+        <p class="caption">The closer the amber line sits on the note lines, the more in tune. Flat amber steps = hard tuning; gentle curves = natural tuning.</p>
+      </div>
+
+      <div class="chips" id="chips"></div>
+    </div>
   </section>
 
 </main>
 
-<footer class="statusbar" id="statusbar">44.1 kHz · frame 2048 · hop 512 · C major · strength 1.00 · retune 40 ms</footer>
+<footer class="statusbar" id="statusbar">44.1 kHz · frame 2048 · hop 512</footer>
 
 <script src="/static/script.js"></script>
 </body>

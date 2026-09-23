@@ -26,12 +26,24 @@ source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Run (current: framing + overlap-add reconstruction test)
+## Run the app (web UI)
 ```bash
-python main.py
+python app.py        # then open http://localhost:5000
 ```
-Reads `data/raw/test_voice.wav`, frames it, reconstructs it via overlap-add,
-and writes the result to `data/processed/reconstructed_test.wav`.
+1. Upload a recording (WAV, MP3, M4A, FLAC, OGG — any length) or record
+   with the microphone (no time limit).
+2. Pick a style: **Natural**, **Studio Pop** (recommended), **Hard Tune**
+   (robotic T-Pain effect) or **Pitch only**. Leave the key on
+   *Auto-detect*.
+3. Press **Tune my voice**, then flip between *Original* and *Tuned*
+   while it plays (or press `T`).
+
+## Other entry points
+```bash
+python run_demo.py                     # CLI: edit the variables at the top
+python main.py                         # framing + overlap-add reconstruction test
+python -m unittest discover tests -v   # regression tests
+```
 
 ## Status
 - [x] Week 1: signal I/O, framing, windowing, overlap-add reconstruction

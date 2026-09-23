@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+
+# files the web app creates for every job (uploads, results, before/after tracks)
+data/raw/upload_*.wav
+data/processed/result_*.wav
+data/processed/original_*.wav

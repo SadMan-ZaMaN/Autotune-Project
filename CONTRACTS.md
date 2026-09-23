@@ -45,30 +45,59 @@ def compute_shift_ratios(detected_pitches: np.ndarray, target_pitches: np.ndarra
 
 ### phase_vocoder_shift
 **File:** `src/autotune/phase_vocoder.py`
-**Status:** [ ] not started
+**Status:** [x] done — attempt 4 (see CLAUDE.md bug history)
 
 ```python
 def phase_vocoder_shift(frames: np.ndarray, shift_ratios: np.ndarray,
-                         config: AutoTuneConfig) -> np.ndarray
+                         config: AutoTuneConfig, preserve_formants: bool = True,
+                         progress_callback=None) -> np.ndarray
 ```
 - `frames`: shape (num_frames, frame_size) — output of frame_signal()
 - `shift_ratios`: shape (num_frames,) — output of compute_shift_ratios()
 - `config`: existing AutoTuneConfig object
+- `preserve_formants`: keep the voice's timbre (formant envelope) fixed
+- `progress_callback`: optional `f(fraction)` for the web UI
 - Returns: shape (num_frames, frame_size) — shifted frames, same shape as
   input, ready to pass into overlap_add() unchanged
-- Note: must track phase continuity ACROSS frames (running phase accumulator),
-  not frame-by-frame independently — this is what separates it from naive_pitch_shift
+- Internals: spectrum remapping + peak locking, with each peak's phase
+  TRACKED across frames as a rotation on top of the original phase. Frames
+  with ratio == 1 come out bit-exact (unshifted consonants are untouched).
 
-### formant_preserve (stretch goal)
-**File:** `src/autotune/phase_vocoder.py`
-**Status:** [ ] not started
+### formant preservation — CHANGED
+The separate `formant_preserve(shifted_frame, original_frame, config)`
+after-step was removed (it had a loudness bias, see CLAUDE.md). Formant
+preservation is now the `preserve_formants` flag above; the pieces are
+`compute_spectral_envelope(magnitude, config, num_coeffs=30)` (returns the
+LOG envelope of a magnitude spectrum) and `formant_gain(log_envelope,
+source_bins, target_bins)`.
 
+### New: key / tuning / target notes
 ```python
-def formant_preserve(shifted_frame: np.ndarray, original_frame: np.ndarray,
-                      config: AutoTuneConfig) -> np.ndarray
+# src/autotune/key_detection.py
+def estimate_tuning_offset(detected_pitches) -> float            # cents, [-50, 50)
+def detect_key(detected_pitches, tuning_offset_cents=0.0) -> (root: str, scale_type: str, confidence: float)
+# src/autotune/scales.py
+def choose_target_notes(detected_pitches, scale_midi_set,
+                        tuning_offset_cents=0.0, hysteresis=0.3) -> np.ndarray   # Hz, 0 = unvoiced
 ```
-- Applies spectral envelope correction so timbre doesn't shift with pitch
-- Returns: shape (frame_size,), float32
+
+### New: studio effects
+```python
+# src/autotune/effects.py
+def studio_polish(audio, sample_rate, reverb_amount=0.2) -> np.ndarray   # EQ, compressor, reverb, -1 dBFS
+```
+Also exposes the biquad designers (`design_highpass`, `design_peaking_eq`,
+`design_high_shelf`) as (b, a) pairs that work with Rajin's
+`plot_pole_zero` / `plot_frequency_response`, and
+`reverb_impulse_response(sample_rate)` (plot it for the report).
+
+### detect_pitch_for_all_frames — extended (backward compatible)
+```python
+def detect_pitch_for_all_frames(frames, sample_rate, fmin=70, fmax=1000,
+                                window=None, clean=True) -> np.ndarray
+```
+`clean=False` returns the raw per-frame detections (for "before clean-up"
+plots).
 
 ---
 
@@ -138,17 +167,24 @@ correction_strength: float = 1.0  # 0.0-1.0
 
 ### run_pipeline
 **File:** `src/autotune/pipeline.py`
-**Status:** [ ] not started
-**Owner:** whoever finishes their side first, other reviews via PR
+**Status:** [x] done
 
 ```python
 def run_pipeline(input_path: str, config: AutoTuneConfig,
-                  use_phase_vocoder: bool = True) -> dict
+                  use_phase_vocoder: bool = True, use_preemphasis: bool = True,
+                  use_formant_preservation: bool = True,
+                  progress_callback=None) -> dict
 ```
 - Returns dict with keys:
-  `original_audio`, `corrected_audio`, `sample_rate`,
-  `detected_pitches`, `target_pitches`, `shift_ratios`
-- This is what `run_demo.py` and the Week 7 Streamlit UI will call
+  `raw_audio`, `original_audio` (both = the untouched input),
+  `corrected_audio`, `sample_rate`, `detected_pitches`, `target_pitches`,
+  `shift_ratios`, `corrected_pitches` (pitch of the output — feed to
+  `plot_pitch_contour`), `key_root`, `key_type`, `key_confidence`,
+  `tuning_offset_cents`
+- Pre-emphasis is applied ONLY to the copy used for pitch detection.
+- New config fields: `auto_key`, `follow_singer_tuning`,
+  `note_hysteresis`, `studio_polish`, `reverb_amount`.
+- Called by `run_demo.py` and the Flask app (`app.py`).
 
 ---
 
