@@ -68,7 +68,8 @@ autotune-project/
 ├── tests/test_phase_vocoder.py   # vocoder regression suite — RUN after any phase_vocoder.py change
 ├── tests/test_pipeline.py        # detection, key/tuning, hysteresis, effects, full pipeline
 ├── CONTRACTS.md            # team interface agreement (updated for attempt 4)
-└── data/raw, data/processed  # audio in/out (per-job upload_/result_/original_ files gitignored)
+└── data/raw, data/processed  # audio in/out - ALL audio gitignored (only .gitkeep tracked);
+                              #   regenerate data/raw/test_voice.wav with gen_test_tone.py
 ```
 
 ## Pipeline flow (run_pipeline in pipeline.py)
@@ -214,7 +215,7 @@ Still open:
 2. Only one real recording exists (data/raw/upload_*.wav, 32 s, male,
    chromatic-ish). A second real sung recording as a test fixture would
    help, especially a female voice and a clearly diatonic song.
-3. Pre-existing hygiene: `__pycache__/*.pyc` and some old data WAVs are
+3. Pre-existing hygiene: `__pycache__/*.pyc` files are
    tracked in git (a .gitignore now exists but does not untrack them;
    `git rm --cached` them if the team agrees).
 4. Preset numbers (strength/retune/reverb) were chosen from the metrics
