@@ -31,7 +31,7 @@ before sending it (see static/script.js), so the backend only ever receives
 WAV - no ffmpeg needed.
 
 Run with:  python app.py
-Then open: http://localhost:5000
+Then open: http://localhost:5001
 """
 
 app = Flask(__name__)
@@ -195,4 +195,4 @@ def get_audio(job_id, kind):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, threaded=True)
+    app.run(debug=True, port=5001, threaded=True)
