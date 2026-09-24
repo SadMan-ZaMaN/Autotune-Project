@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+
+# audio inputs/outputs stay on your own computer, never on GitHub
+# (.gitkeep keeps the empty folders so the scripts can still save into them)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
