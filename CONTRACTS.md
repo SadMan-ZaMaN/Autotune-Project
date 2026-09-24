@@ -81,6 +81,29 @@ def choose_target_notes(detected_pitches, scale_midi_set,
                         tuning_offset_cents=0.0, hysteresis=0.3) -> np.ndarray   # Hz, 0 = unvoiced
 ```
 
+### New: noise reduction
+```python
+# src/autotune/noise_reduction.py
+def reduce_noise(audio, config, amount=0.5, detected_pitches=None) -> (np.ndarray, dict)
+#   amount 0..1 -> max reduction amount*24 dB; info = {"applied", "reason",
+#   "noise_db", "max_reduction_db"}; audio returned unchanged if no steady
+#   noise floor is found
+def estimate_noise_profile(spectra, config, num_samples, detected_pitches=None, ...) -> (np.ndarray | None, str)
+def compute_suppression_gains(spectra, noise_power, max_reduction_db=12.0, smoothing=0.96) -> np.ndarray
+def protect_harmonics(gains, detected_pitches, config, half_width_bins=1) -> np.ndarray
+```
+New config field `noise_reduction` (0 = off, default). `run_pipeline` result
+gains key `noise_reduction` (the info dict).
+
+### New: step-by-step graphs
+```python
+# src/autotune/stage_plots.py
+def build_stages(trace) -> list   # trace = dict collected inside run_pipeline
+# src/autotune/effects.py
+def studio_polish_stages(audio, sample_rate, reverb_amount=0.2) -> dict  # eq, compressed, gain_db, reverb, final
+def compress(..., return_gain=False)   # True -> (audio, gain_db)
+```
+
 ### New: studio effects
 ```python
 # src/autotune/effects.py
@@ -173,14 +196,25 @@ correction_strength: float = 1.0  # 0.0-1.0
 def run_pipeline(input_path: str, config: AutoTuneConfig,
                   use_phase_vocoder: bool = True, use_preemphasis: bool = True,
                   use_formant_preservation: bool = True,
-                  progress_callback=None) -> dict
+                  progress_callback=None, note_overrides=None,
+                  collect_stages=False) -> dict
 ```
 - Returns dict with keys:
   `raw_audio`, `original_audio` (both = the untouched input),
   `corrected_audio`, `sample_rate`, `detected_pitches`, `target_pitches`,
   `shift_ratios`, `corrected_pitches` (pitch of the output — feed to
   `plot_pitch_contour`), `key_root`, `key_type`, `key_confidence`,
-  `tuning_offset_cents`
+  `tuning_offset_cents`, `notes` (automatic notes, list of
+  `(start_frame, end_frame, target_hz)`, end exclusive)
+- `note_overrides` (NEW, optional): list of
+  `{"start_frame", "end_frame", "semitones"}` - notes the user dragged in the
+  web UI. Those frames' targets move by `2^(semitones/12)` and are corrected
+  at FULL strength; `notes` is always segmented before overrides.
+- Helpers in `scales.py`: `segment_notes(target_pitches)`,
+  `apply_note_overrides(target_pitches, note_overrides) -> (targets, mask)`.
+- `collect_stages=False` (NEW, optional): when True the result also has
+  `stages` (list of step dicts from `stage_plots.build_stages`) - for the
+  web UI's step-by-step graphs. Never changes the audio.
 - Pre-emphasis is applied ONLY to the copy used for pitch detection.
 - New config fields: `auto_key`, `follow_singer_tuning`,
   `note_hysteresis`, `studio_polish`, `reverb_amount`.

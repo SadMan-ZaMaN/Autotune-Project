@@ -70,7 +70,7 @@ class AutoTuneConfig:
 
     def __init__(self, frame_size = 2048, hop_size = 512, sample_rate = 44100, scale_root = "C", scale_type = "major", correction_strength = 1.0, retune_ms = 40.0,
                  auto_key = False, follow_singer_tuning = False, note_hysteresis = 0.3,
-                 studio_polish = False, reverb_amount = 0.2):
+                 studio_polish = False, reverb_amount = 0.2, noise_reduction = 0.0):
         self.frame_size = frame_size
         self.hop_size = hop_size
         self.sample_rate = sample_rate
@@ -102,6 +102,11 @@ class AutoTuneConfig:
         # reverb_amount: 0 = dry, 0.2 = produced, 0.35+ = big hall
         self.studio_polish = studio_polish
         self.reverb_amount = reverb_amount
+
+        # noise_reduction: 0 = off, 0..1 = how hard to remove steady
+        # background noise (fan, traffic, hiss) BEFORE tuning; the maximum
+        # reduction is noise_reduction * 24 dB (noise_reduction.py)
+        self.noise_reduction = noise_reduction
 
 
 

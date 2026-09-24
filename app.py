@@ -30,6 +30,11 @@ The browser converts every upload/recording (MP3, M4A, WebM, ...) to a WAV
 before sending it (see static/script.js), so the backend only ever receives
 WAV - no ffmpeg needed.
 
+Note editing: every result lists the automatic NOTES (runs of frames with
+the same target, see scales.segment_notes). The page draws them as bars you
+can drag up/down; /rerender/<job_id> then re-runs that job - same file, same
+settings - with those notes moved (run_pipeline's note_overrides).
+
 Run with:  python app.py
 Then open: http://localhost:5001
 """
@@ -42,8 +47,12 @@ OUTPUT_DIR = "data/processed"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# job_id -> {"state", "stage", "progress", "result", "error"}
+# job_id -> {"state", "stage", "progress", "result", "error", "context"}
+# context = (input_path, config, options), kept so a job can be re-rendered
+# with note edits using exactly the settings it was first run with
 jobs = {}
+
+MAX_EDIT_SEMITONES = 12
 jobs_lock = threading.Lock()
 
 
@@ -80,13 +89,37 @@ def pitch_track_for_plot(pitches, config, max_points=6000):
     return times, values
 
 
-def run_job(job_id, input_path, config, options):
+def notes_for_plot(notes, config):
+    """
+    (start_frame, end_frame, target_hz) notes -> JSON for the note bars.
+    Times use the same frame-centre convention as pitch_track_for_plot; a
+    bar covers half a hop either side of its first/last frame centre.
+    midi is the automatic target (fractional when follow-my-tuning shifted
+    the scale), so the bar sits exactly on the note line the graph draws.
+    """
+    hop_s = config.hop_size / config.sample_rate
+    out = []
+    for start, end, target_hz in notes:
+        first_centre = (start * config.hop_size - config.frame_size / 2) / config.sample_rate
+        last_centre = ((end - 1) * config.hop_size - config.frame_size / 2) / config.sample_rate
+        out.append({
+            "start_frame": int(start),
+            "end_frame": int(end),
+            "start": round(max(0.0, first_centre - hop_s / 2), 4),
+            "end": round(max(0.0, last_centre + hop_s / 2), 4),
+            "midi": round(float(freq_to_midi(target_hz)), 3),
+        })
+    return out
+
+
+def run_job(job_id, input_path, config, options, note_overrides=None):
     started = time.time()
     try:
         def progress(stage, fraction):
             update_job(job_id, stage=stage, progress=round(float(fraction), 3))
 
-        result = run_pipeline(input_path, config, progress_callback=progress, **options)
+        result = run_pipeline(input_path, config, progress_callback=progress,
+                              note_overrides=note_overrides, collect_stages=True, **options)
         sr = result["sample_rate"]
 
         corrected = result["corrected_audio"]
@@ -103,8 +136,11 @@ def run_job(job_id, input_path, config, options):
         _, corrected_pitch = pitch_track_for_plot(result["corrected_pitches"], config)
 
         update_job(job_id, state="done", stage="Done", progress=1.0, result={
+            "job_id": job_id,
             "output_url": f"/audio/{job_id}/result",
             "original_url": f"/audio/{job_id}/original",
+            # a re-render reuses the first job's upload, so take the id from the file name
+            "input_url": f"/audio/{os.path.basename(input_path)[len('upload_'):-len('.wav')]}/input",
             "duration": round(len(corrected) / sr, 2),
             "processing_time": round(time.time() - started, 1),
             "key_root": result["key_root"],
@@ -112,12 +148,17 @@ def run_job(job_id, input_path, config, options):
             "key_confidence": result["key_confidence"],
             "key_auto": config.auto_key,
             "tuning_offset_cents": round(result["tuning_offset_cents"], 1),
+            "noise_reduction": result["noise_reduction"],
             "pitch": {
                 "times": times,
                 "detected": detected,
                 "target": target,
                 "corrected": corrected_pitch,
             },
+            "notes": notes_for_plot(result["notes"], config),
+            "overrides": note_overrides or [],
+            # one entry per processing step, with its graphs (stage_plots.py)
+            "stages": result["stages"],
         })
     except Exception as e:
         traceback.print_exc()
@@ -159,6 +200,7 @@ def process():
         follow_singer_tuning=as_bool(request.form.get("follow_tuning"), True),
         studio_polish=as_bool(request.form.get("studio_polish"), True),
         reverb_amount=reverb,
+        noise_reduction=float(request.form.get("noise_reduction", 0.5)),
     )
     options = {
         "use_phase_vocoder": as_bool(request.form.get("use_phase_vocoder"), True),
@@ -166,12 +208,52 @@ def process():
         "use_preemphasis": as_bool(request.form.get("use_preemphasis"), True),
     }
 
+    start_job(job_id, input_path, config, options)
+    return jsonify({"job_id": job_id})
+
+
+def start_job(job_id, input_path, config, options, note_overrides=None):
     with jobs_lock:
         jobs[job_id] = {"state": "running", "stage": "Starting", "progress": 0.0,
-                        "result": None, "error": None}
-    worker = threading.Thread(target=run_job, args=(job_id, input_path, config, options), daemon=True)
+                        "result": None, "error": None,
+                        "context": (input_path, config, options)}
+    worker = threading.Thread(target=run_job, daemon=True,
+                              args=(job_id, input_path, config, options, note_overrides))
     worker.start()
-    return jsonify({"job_id": job_id})
+
+
+@app.route("/rerender/<job_id>", methods=["POST"])
+def rerender(job_id):
+    """
+    Re-runs a finished job with some notes moved. Body:
+        {"overrides": [{"start_frame": 120, "end_frame": 164, "semitones": 2}, ...]}
+    Starts a NEW job (so the automatic result stays available unchanged)
+    and returns its id; poll /status/<new id> as usual.
+    """
+    with jobs_lock:
+        job = jobs.get(job_id)
+        context = job["context"] if job is not None else None
+    if context is None:
+        return jsonify({"error": "Unknown job - run the tuning again first"}), 404
+
+    body = request.get_json(silent=True) or {}
+    overrides = []
+    try:
+        for edit in body.get("overrides", []):
+            start = int(edit["start_frame"])
+            end = int(edit["end_frame"])
+            semitones = int(edit["semitones"])
+            if end <= start or semitones == 0:
+                continue
+            semitones = max(-MAX_EDIT_SEMITONES, min(MAX_EDIT_SEMITONES, semitones))
+            overrides.append({"start_frame": start, "end_frame": end, "semitones": semitones})
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "Badly formed note edits"}), 400
+
+    input_path, config, options = context
+    new_id = uuid.uuid4().hex[:8]
+    start_job(new_id, input_path, config, options, overrides)
+    return jsonify({"job_id": new_id})
 
 
 @app.route("/status/<job_id>")
@@ -180,17 +262,35 @@ def status(job_id):
         job = jobs.get(job_id)
         if job is None:
             return jsonify({"error": "Unknown job"}), 404
-        return jsonify(dict(job))
+        public = {k: v for k, v in job.items() if k != "context"}
+        return jsonify(public)
+
+
+# kind -> (folder, file prefix, download name)
+#   result:   the tuned output
+#   original: the untouched input, loudness-matched to the result (for the A/B player)
+#   input:    the recording EXACTLY as uploaded/recorded (for downloading)
+AUDIO_KINDS = {
+    "result": (OUTPUT_DIR, "result", "tuned.wav"),
+    "original": (OUTPUT_DIR, "original", "original_matched.wav"),
+    "input": (UPLOAD_DIR, "upload", "original.wav"),
+}
 
 
 @app.route("/audio/<job_id>/<kind>")
 def get_audio(job_id, kind):
-    if kind not in ("result", "original") or not job_id.isalnum():
+    if kind not in AUDIO_KINDS or not job_id.isalnum():
         abort(404)
-    path = os.path.join(OUTPUT_DIR, f"{kind}_{job_id}.wav")
+    folder, prefix, download_name = AUDIO_KINDS[kind]
+    path = os.path.join(folder, f"{prefix}_{job_id}.wav")
     if not os.path.exists(path):
         abort(404)
-    download_name = "tuned.wav" if kind == "result" else "original.wav"
+    # a re-render with note edits downloads under its own name
+    with jobs_lock:
+        job = jobs.get(job_id)
+        edited = bool(job and job["result"] and job["result"].get("overrides"))
+    if kind == "result" and edited:
+        download_name = "tuned_edited.wav"
     return send_file(path, mimetype="audio/wav", download_name=download_name)
 
 

@@ -115,7 +115,7 @@ def one_pole_smoother(time_constant_ms, sample_rate):
     return np.array([1.0 - c]), np.array([1.0, -c])
 
 
-def compress(audio, sample_rate, threshold_db=-24.0, ratio=3.0, gate_db=-50.0):
+def compress(audio, sample_rate, threshold_db=-24.0, ratio=3.0, gate_db=-50.0, return_gain=False):
     """
     Evens out loudness. Steps:
       1. Level meter: square the signal and smooth it with a 10 ms one-pole
@@ -131,6 +131,8 @@ def compress(audio, sample_rate, threshold_db=-24.0, ratio=3.0, gate_db=-50.0):
     The input is first scaled so its loud parts sit near -18 dBFS; that
     makes the fixed threshold mean the same thing for quiet and loud
     recordings.
+    return_gain=True also returns the smoothed gain curve in dB (one value
+    per sample) - that's what the web UI's "Compressor" graph shows.
     """
     b, a = one_pole_smoother(10.0, sample_rate)
     power = lfilter(b, a, audio ** 2)
@@ -151,7 +153,10 @@ def compress(audio, sample_rate, threshold_db=-24.0, ratio=3.0, gate_db=-50.0):
 
     b, a = one_pole_smoother(80.0, sample_rate)
     gain_db = lfilter(b, a, gain_db)
-    return audio * 10 ** (gain_db / 20.0)
+    out = audio * 10 ** (gain_db / 20.0)
+    if return_gain:
+        return out, gain_db
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -272,12 +277,33 @@ def normalize_peak(audio, peak_db=-1.0):
 
 def studio_polish(audio, sample_rate, reverb_amount=0.2):
     """The whole chain described at the top of this file."""
+    return studio_polish_stages(audio, sample_rate, reverb_amount)["final"]
+
+
+def studio_polish_stages(audio, sample_rate, reverb_amount=0.2):
+    """
+    The same chain as studio_polish, but keeping the signal after every
+    stage (for the step-by-step graphs in the web UI). studio_polish itself
+    calls this, so the graphs always show exactly what was applied.
+
+    Returns a dict:
+        "eq"          after high-pass + EQ
+        "compressed"  after the compressor
+        "gain_db"     the compressor's gain curve (dB, one value per sample)
+        "reverb"      after the reverb
+        "final"       after peak normalisation (float32) = studio_polish output
+    """
+    stages = {}
     audio = np.asarray(audio, dtype=np.float64)
     audio = vocal_eq(audio, sample_rate)
-    audio = compress(audio, sample_rate)
+    stages["eq"] = audio
+    audio, gain_db = compress(audio, sample_rate, return_gain=True)
+    stages["compressed"] = audio
+    stages["gain_db"] = gain_db
     audio = add_reverb(audio, sample_rate, reverb_amount)
-    audio = normalize_peak(audio, -1.0)
-    return audio.astype(np.float32)
+    stages["reverb"] = audio
+    stages["final"] = normalize_peak(audio, -1.0).astype(np.float32)
+    return stages
 
 
 def match_loudness(reference, audio, sample_rate):

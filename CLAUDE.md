@@ -34,7 +34,7 @@ pip install -r requirements.txt
 python main.py              # basic framing/OLA test
 python run_demo.py          # CLI pipeline demo, edit variables at top of file
 python app.py                # web UI, open http://localhost:5000
-python -m unittest discover tests -v   # ALL regression tests (27) - run after any DSP change
+python -m unittest discover tests -v   # ALL regression tests (44) - run after any DSP change
 ```
 
 ## Project structure
@@ -45,21 +45,25 @@ autotune-project/
 │   ├── config.py           # AutoTuneConfig: frame_size, hop_size, sample_rate,
 │   │                        #   scale_root, scale_type, correction_strength, retune_ms,
 │   │                        #   auto_key, follow_singer_tuning, note_hysteresis,
-│   │                        #   studio_polish, reverb_amount
+│   │                        #   studio_polish, reverb_amount, noise_reduction
 │   ├── io_utils.py         # load_audio, save_audio (WAV/FLAC/OGG/MP3 via soundfile)
 │   ├── framing.py          # frame_signal, overlap_add (Hann window, weighted OLA)
 │   ├── pitch_detection.py  # autocorrelation + Boersma window correction, parabolic
 │   │                        #   interpolation, octave guard, clean_pitch_track
-│   ├── scales.py           # MIDI conversion, build_scale_midi_set, choose_target_notes (hysteresis)
+│   ├── scales.py           # MIDI conversion, build_scale_midi_set, choose_target_notes (hysteresis),
+│   │                        #   segment_notes + apply_note_overrides (manual note editing)
 │   ├── key_detection.py    # estimate_tuning_offset (circular mean), detect_key (coverage + K-S)
 │   ├── pitch_shift.py      # naive_pitch_shift, compute_shift_ratios, smooth_shift_ratios
 │   ├── phase_vocoder.py    # THE CORE FILE — see below, read Bug History before touching
+│   ├── noise_reduction.py  # Wiener-filter background noise removal (fan/traffic/hiss), before tuning
 │   ├── effects.py          # studio polish: biquad EQ, compressor, Schroeder reverb (convolution)
 │   ├── presets.py          # Natural / Studio Pop / Hard Tune / Pitch only settings bundles
+│   ├── stage_plots.py      # step-by-step graph data for the web UI (one entry per step that ran)
 │   ├── filters.py          # Rajin's pre-emphasis filter (Z-transform), pole-zero/freq plots
 │   ├── visualization.py    # Rajin's waveform/spectrogram/pitch-contour plots
 │   └── pipeline.py         # run_pipeline() — chains everything together
-├── app.py                  # Flask backend: background job + /status polling, /presets, /audio
+├── app.py                  # Flask backend: background job + /status polling, /presets, /audio,
+│                           #   /rerender/<job_id> (same job + note edits -> new job)
 ├── templates/index.html    # frontend (3 steps: Voice -> Style -> Result)
 ├── static/style.css        # "console/instrument" design — amber+steel on graphite
 ├── static/script.js        # in-browser decode->WAV, recorder, presets, A/B player, pitch graph
@@ -67,6 +71,8 @@ autotune-project/
 ├── run_demo.py             # simple CLI entry point, edit variables at top
 ├── tests/test_phase_vocoder.py   # vocoder regression suite — RUN after any phase_vocoder.py change
 ├── tests/test_pipeline.py        # detection, key/tuning, hysteresis, effects, full pipeline
+├── tests/test_noise_reduction.py # voice-safety of noise reduction + noisy full pipeline
+├── tests/test_stage_plots.py     # step graphs: audio unchanged, per-style step lists, chart numbers
 ├── CONTRACTS.md            # team interface agreement (updated for attempt 4)
 └── data/raw, data/processed  # audio in/out - ALL audio gitignored (only .gitkeep tracked);
                               #   regenerate data/raw/test_voice.wav with gen_test_tone.py
@@ -76,11 +82,17 @@ autotune-project/
 
 ```
 load audio (raw_audio kept untouched for honest before/after comparison)
+  -> reduce_noise (noise_reduction.py) if config.noise_reduction > 0: rough pitch
+     track WITHOUT pre-emphasis -> noise profile from unvoiced steady-floor
+     frames -> Wiener gains (+harmonic protection) -> `audio` = cleaned
   -> frame_signal (framing.py) on the RAW audio  <- this is what gets shifted
   -> pre-emphasis filter on a COPY, framed separately, used ONLY for detection
   -> detect_pitch_for_all_frames (pitch_detection.py, incl. clean_pitch_track)
   -> estimate_tuning_offset + detect_key (key_detection.py) if auto
   -> choose_target_notes (scales.py) — nearest scale note WITH hysteresis
+  -> segment_notes -> notes (the UI's draggable bars); if note_overrides:
+     apply_note_overrides moves those notes by whole semitones
+  -> compute_shift_ratios; overridden frames re-done at strength 1.0 (hard)
   -> compute_shift_ratios (pitch_shift.py) — raw_ratio ** correction_strength
   -> smooth_shift_ratios (pitch_shift.py) — EMA in log-space, avoids robotic snap
   -> phase_vocoder_shift (formant preservation is INSIDE it now) OR naive_pitch_shift
@@ -90,6 +102,17 @@ load audio (raw_audio kept untouched for honest before/after comparison)
 ```
 
 `progress_callback(stage, fraction)` is threaded through for the web UI's progress bar.
+
+`collect_stages=True` (the web app always sets it) keeps the signal after
+every step and returns `stages` built by `stage_plots.build_stages`: per
+step an id, title, summary, explanation, stats and 1-2 charts already
+reduced to plot data (wave envelopes, line series, bars, 8-bit base64
+log-frequency spectrograms; ~0.5-0.7 MB JSON for 24 s). Only steps that ran
+are listed, so Pitch only = 10 steps, the other presets 14. It must never
+change the audio (tested bit-identical); studio_polish itself calls
+`effects.studio_polish_stages`, so the polish graphs show exactly what ran.
+The page (`static/script.js`, "Step-by-step processing view") only draws;
+it shows the Edited run's steps when the A/B player is on Edited.
 
 ## CRITICAL: Bug history in phase_vocoder.py — read before editing
 
@@ -174,6 +197,49 @@ formant step. In-remap version: neutral at autotune-size shifts, much
 better at big ones (spectral error vs ideal at ratio 1.5: 8.4 -> 4.1 dB
 without/with). num_coeffs 20/30/40 measured ~identical.
 
+## Manual note editing (web UI)
+
+The pitch graph draws one bar per automatic note (runs of equal target,
+`scales.segment_notes`). Dragging a bar up/down (or select + arrow keys)
+stores `{note key "start:end" -> semitones}` in the page; "Apply edits"
+POSTs them to `/rerender/<auto job id>`, which re-runs the SAME input with
+the SAME config plus `note_overrides` as a new job. The automatic result is
+never replaced: it stays "Tuned", the re-render is a third A/B side
+"Edited". Edited notes ignore correction_strength (always full) but still
+glide with retune_ms. Notes are segmented before overrides, so a bar keeps
+its frame range (= its identity) across re-renders. Tested in
+`TestNoteEditing` (the full-pipeline test fails if edits use the global
+strength) and driven end-to-end in headless Edge.
+
+## Noise reduction (noise_reduction.py)
+
+Spectral-domain Wiener filter on the same Hann frames/OLA as the rest
+(G = 1 everywhere reconstructs the input exactly). Runs BEFORE detection
+and shifting, so the fan hum isn't pitch-shifted with the voice and the
+detector sees a cleaner signal. `config.noise_reduction` 0..1 = max
+reduction x 24 dB (UI default 0.5 = 12 dB; CLI/tests default 0 = off).
+Safety mechanisms, each with a test that FAILS without it:
+- noise profile only from frames that are (a) unvoiced by a rough pitch
+  track and (b) a STEADY floor: within 6 dB of the 10th-percentile power,
+  >= 0.25 s of them. First version ("quietest 10% of frames") learned the
+  fading tails of notes/consonants as noise and altered a CLEAN melody.
+  If no such floor exists -> audio returned untouched (bit-identical).
+- median (not mean) per bin over floor frames, /ln2 bias correction.
+- decision-directed a-priori SNR (Ephraim-Malah, smoothing 0.96) -> no
+  musical noise; gain floor = 10^(-max_db/20).
+- protect_harmonics: in voiced frames, gain = 1 at k*f0 +/- 1 bin (noise
+  under a loud harmonic is masked anyway). Without it the voice lost
+  ~0.6 dB at 5 dB SNR; with it < 0.25 dB.
+The rough pitch track skips pre-emphasis (pre-emphasis boosts hiss: at 20
+dB SNR hiss it found ~35% of voiced frames and read +32 cents sharp). The
+FINAL detection keeps pre-emphasis: without it, real recordings in
+data/raw got ~7x more >600 Hz octave spikes. Measured: fan 5 dB SNR notes
+tuned up to 36 c off -> <4 c; hiss 20 dB 23 -> 1.4 c; spectral distance
+of the tuned output to "tuned clean voice" roughly halved for every noise;
+real recordings: loud-part level change <= 0.05 dB, quiet parts -8..-10 dB,
+~0.15 s per 30 s of audio. Limitation: hiss at ~10 dB SNR still leaves
+~8 c detection bias (pre-emphasis on the residual hiss).
+
 ## Pitch detection / key / targets (the "music theory" layer)
 
 - `detect_pitch_autocorrelation`: Boersma window-ACF normalization,
@@ -220,6 +286,13 @@ Still open:
    `git rm --cached` them if the team agrees).
 4. Preset numbers (strength/retune/reverb) were chosen from the metrics
    and common autotune practice, not tuned by ear.
+5. `estimate_tuning_offset` is unstable when the singer has no consistent
+   offset: the real recordings have circular resultant length R = 0.02 /
+   0.11 (a consistently-sharp synthetic singer: 0.26-0.66). On
+   upload_c1b5a2e5 random 90% subsets of the SAME frames give 3..19 cents,
+   so anything that changes the voiced-frame set (e.g. noise reduction
+   finding a few more note edges) moves the offset and flips ~18% of target
+   notes. Proposed fix, NOT applied yet: return 0 when R is below ~0.1-0.15.
 
 ## Coding conventions (please follow)
 

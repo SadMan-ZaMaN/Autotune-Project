@@ -80,6 +80,12 @@
       <summary>Fine-tune <span class="label-note">(optional)</span></summary>
 
       <div class="field-row slider-row">
+        <label for="noise">Noise reduction <span class="label-note">removes fan, traffic and hiss before tuning · 0 = off</span></label>
+        <input type="range" id="noise" min="0" max="1" step="0.05" value="0.5">
+        <span class="readout" id="noise-readout">50%</span>
+      </div>
+
+      <div class="field-row slider-row">
         <label for="strength">Correction strength <span class="label-note">how far notes are pulled onto pitch</span></label>
         <input type="range" id="strength" min="0" max="1" step="0.01" value="1.0">
         <span class="readout" id="strength-readout">100%</span>
@@ -131,11 +137,17 @@
         <div class="ab-switch" role="radiogroup" aria-label="Which version to hear">
           <button type="button" class="ab-option" data-side="original" role="radio" aria-checked="false">Original</button>
           <button type="button" class="ab-option active" data-side="tuned" role="radio" aria-checked="true">Tuned</button>
+          <button type="button" class="ab-option" data-side="edited" role="radio" aria-checked="false" id="ab-edited" hidden>Edited</button>
         </div>
         <span class="play-time" id="play-time">0:00 / 0:00</span>
-        <a class="btn secondary download-btn" id="download-btn" download="tuned.wav">Download tuned.wav</a>
+        <div class="downloads" role="group" aria-label="Download">
+          <span class="downloads-label">Download</span>
+          <a class="btn secondary download-btn" id="dl-original" download="original.wav" title="Your recording exactly as uploaded or recorded">Original</a>
+          <a class="btn secondary download-btn" id="dl-tuned" download="tuned.wav" title="The automatic tuning">Tuned</a>
+          <a class="btn secondary download-btn" id="dl-edited" download="tuned_edited.wav" title="The tuning with your note edits" hidden>Edited</a>
+        </div>
       </div>
-      <p class="hint">Switch between Original and Tuned while it plays — or press <kbd>T</kbd>. <kbd>Space</kbd> plays/pauses.</p>
+      <p class="hint">Switch versions while it plays — or press <kbd>T</kbd>. <kbd>Space</kbd> plays/pauses.</p>
 
       <div class="trace-block">
         <div class="trace-label"><span id="wave-label">Tuned signal</span><span>click to jump</span></div>
@@ -145,13 +157,42 @@
       <div class="trace-block">
         <div class="trace-label">
           <span>Notes over time</span>
-          <span class="legend"><i class="sw sw-in"></i>you sang <i class="sw sw-out"></i>after tuning <i class="sw sw-key"></i>notes of the key</span>
+          <span class="legend"><span class="lg"><i class="sw sw-note"></i>notes</span> <span class="lg"><i class="sw sw-in"></i>you sang</span> <span class="lg"><i class="sw sw-out"></i>after tuning</span> <span class="lg"><i class="sw sw-edit"></i>your edits</span> <span class="lg"><i class="sw sw-key"></i>notes of the key</span></span>
         </div>
-        <canvas id="pitch-graph" class="pitch-graph seekable"></canvas>
-        <p class="caption">The closer the amber line sits on the note lines, the more in tune. Flat amber steps = hard tuning; gentle curves = natural tuning.</p>
+        <canvas id="pitch-graph" class="pitch-graph seekable" tabindex="0" aria-label="Pitch graph. Drag a note bar up or down to change it; arrow keys move the selected note."></canvas>
+        <div class="note-editor">
+          <p class="edit-summary" id="edit-summary">Drag a note bar up or down to force it onto a different note.</p>
+          <div class="edit-actions">
+            <button class="btn secondary compact" id="reset-edits-btn" type="button" disabled>Reset edits</button>
+            <button class="btn primary compact" id="apply-edits-btn" type="button" disabled>Apply edits</button>
+          </div>
+        </div>
+        <p class="caption">Each bar is a note the auto-tune chose. Drag one up or down to override it — edited notes are snapped hard onto their new pitch. Click a bar to select it, then <kbd>↑</kbd>/<kbd>↓</kbd> move it and <kbd>Delete</kbd> puts it back. The Tuned version stays as the automatic result; your edits play as Edited.</p>
       </div>
 
       <div class="chips" id="chips"></div>
+
+      <div class="stages" id="stages">
+        <div class="stages-head">
+          <h3 class="stages-title">How your voice was processed</h3>
+          <span class="stages-meta" id="stages-meta"></span>
+        </div>
+        <p class="hint">Every step the signal went through with this style, in order. Pick a step to see what it did to your recording.</p>
+        <div class="stage-steps" id="stage-steps" role="tablist" aria-label="Processing steps"></div>
+        <div class="stage-view" id="stage-view" role="tabpanel" aria-labelledby="stage-title">
+          <div class="stage-top">
+            <h4 class="stage-title" id="stage-title"></h4>
+            <p class="stage-summary" id="stage-summary"></p>
+          </div>
+          <div class="stage-charts" id="stage-charts"></div>
+          <dl class="stage-stats" id="stage-stats"></dl>
+          <p class="stage-explain" id="stage-explain"></p>
+          <div class="stage-nav">
+            <button class="btn secondary compact" id="stage-prev" type="button">&larr; Previous step</button>
+            <button class="btn secondary compact" id="stage-next" type="button">Next step &rarr;</button>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 

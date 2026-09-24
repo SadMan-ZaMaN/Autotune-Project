@@ -10,7 +10,8 @@ sys.path.insert(0, os.path.dirname(__file__))   # for the shared test signal hel
 from autotune.config import AutoTuneConfig
 from autotune.framing import frame_signal
 from autotune.pitch_detection import detect_pitch_for_all_frames
-from autotune.scales import build_scale_midi_set, choose_target_notes, midi_to_freq, freq_to_midi
+from autotune.scales import (build_scale_midi_set, choose_target_notes, midi_to_freq, freq_to_midi,
+                             segment_notes, apply_note_overrides)
 from autotune.key_detection import estimate_tuning_offset, detect_key
 from autotune import effects
 
@@ -171,6 +172,47 @@ class TestFullPipeline(unittest.TestCase):
         result = self.run_on(audio, auto_key=True, follow_singer_tuning=True, studio_polish=True)
         self.assertIn(result["key_type"], ("major", "natural_minor", "chromatic"))
         self.assertLessEqual(np.max(np.abs(result["corrected_audio"])), 0.9)
+
+
+class TestNoteEditing(unittest.TestCase):
+    """The web UI's draggable note bars: segment_notes + note_overrides."""
+
+    def test_segment_notes_splits_on_gaps_and_note_changes(self):
+        targets = np.array([0, 220, 220, 220, 247, 247, 0, 0, 220], dtype=float)
+        self.assertEqual(segment_notes(targets),
+                         [(1, 4, 220.0), (4, 6, 247.0), (8, 9, 220.0)])
+
+    def test_override_moves_only_that_note_by_semitones(self):
+        targets = np.array([0, 220, 220, 247, 247, 0], dtype=float)
+        moved, mask = apply_note_overrides(targets, [{"start_frame": 1, "end_frame": 3, "semitones": 2}])
+        self.assertAlmostEqual(moved[1], 220 * 2 ** (2 / 12))
+        self.assertAlmostEqual(moved[2], 220 * 2 ** (2 / 12))
+        self.assertEqual(list(moved[3:]), [247, 247, 0])       # other note untouched
+        self.assertEqual(list(mask), [False, True, True, False, False, False])
+
+    def test_dragged_note_lands_on_new_pitch_at_low_strength(self):
+        # A3 sung in tune, dragged +2 semitones in the UI -> must come out
+        # as B3 even though the global correction strength is only 50%
+        # (edits are corrected at full strength), through the full
+        # frame -> phase vocoder -> overlap-add path.
+        from autotune.pipeline import run_pipeline
+        import soundfile as sf
+        audio = make_vibrato_voice(57, SR, 1.5, vibrato_semitones=0.0)
+        config = AutoTuneConfig(scale_root="A", scale_type="major",
+                                correction_strength=0.5, retune_ms=0.0)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "in.wav")
+            sf.write(path, audio, SR)
+            auto = run_pipeline(path, config)
+            self.assertEqual(len(auto["notes"]), 1)
+            start, end, _ = auto["notes"][0]
+            edited = run_pipeline(path, config, note_overrides=[
+                {"start_frame": start, "end_frame": end, "semitones": 2}])
+        self.assertEqual(edited["notes"], auto["notes"])        # bars keep their identity
+        out = edited["corrected_pitches"]
+        middle = out[len(out) // 4: 3 * len(out) // 4]
+        voiced = middle[middle > 0]
+        self.assertLess(abs(cents(np.median(voiced), midi_to_freq(59))), 10.0)
 
 
 if __name__ == '__main__':
