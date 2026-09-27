@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Console — Pitch Correction</title>
+<title>Consonance — Pitch Correction</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314171A'/%3E%3Cpath d='M3 16c3-9 6-9 9 0s6 9 9 0 5-7 8-2' fill='none' stroke='%23E8A33D' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -14,8 +14,8 @@
 <header class="hero">
   <canvas id="scope" class="scope"></canvas>
   <div class="hero-label">
-    <h1>Console</h1>
-    <p>Pitch correction built from scratch — autocorrelation pitch detection and a phase vocoder. CSE 220 signals project.</p>
+    <h1>Consonance</h1>
+    <p>Turning off keys into off the charts!</p>
   </div>
 </header>
 
@@ -172,26 +172,13 @@
 
       <div class="chips" id="chips"></div>
 
-      <div class="stages" id="stages">
-        <div class="stages-head">
+      <div class="steps-card">
+        <div class="steps-card-text">
           <h3 class="stages-title">How your voice was processed</h3>
-          <span class="stages-meta" id="stages-meta"></span>
+          <p class="hint">Every step the signal went through with this style, with graphs, the numbers and the maths behind each one.</p>
+          <span class="stages-meta" id="steps-meta"></span>
         </div>
-        <p class="hint">Every step the signal went through with this style, in order. Pick a step to see what it did to your recording.</p>
-        <div class="stage-steps" id="stage-steps" role="tablist" aria-label="Processing steps"></div>
-        <div class="stage-view" id="stage-view" role="tabpanel" aria-labelledby="stage-title">
-          <div class="stage-top">
-            <h4 class="stage-title" id="stage-title"></h4>
-            <p class="stage-summary" id="stage-summary"></p>
-          </div>
-          <div class="stage-charts" id="stage-charts"></div>
-          <dl class="stage-stats" id="stage-stats"></dl>
-          <p class="stage-explain" id="stage-explain"></p>
-          <div class="stage-nav">
-            <button class="btn secondary compact" id="stage-prev" type="button">&larr; Previous step</button>
-            <button class="btn secondary compact" id="stage-next" type="button">Next step &rarr;</button>
-          </div>
-        </div>
+        <a class="btn primary compact steps-link" id="steps-link" href="#">Open step-by-step graphs &rarr;</a>
       </div>
     </div>
   </section>
