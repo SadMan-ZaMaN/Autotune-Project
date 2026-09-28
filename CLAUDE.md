@@ -65,8 +65,10 @@ autotune-project/
 ├── app.py                  # Flask backend: background job + /status polling, /presets, /audio,
 │                           #   /rerender/<job_id> (same job + note edits -> new job)
 ├── templates/index.html    # frontend (3 steps: Voice -> Style -> Result)
+├── templates/steps.html    # step-by-step graphs page (/steps/<job_id>), opened in a new tab
 ├── static/style.css        # "console/instrument" design — amber+steel on graphite
 ├── static/script.js        # in-browser decode->WAV, recorder, presets, A/B player, pitch graph
+├── static/steps.js         # draws result["stages"] for the steps page (charts, explanations)
 ├── record_voice.py         # standalone mic-recording script (Rajin)
 ├── run_demo.py             # simple CLI entry point, edit variables at top
 ├── tests/test_phase_vocoder.py   # vocoder regression suite — RUN after any phase_vocoder.py change
@@ -111,8 +113,16 @@ log-frequency spectrograms; ~0.5-0.7 MB JSON for 24 s). Only steps that ran
 are listed, so Pitch only = 10 steps, the other presets 14. It must never
 change the audio (tested bit-identical); studio_polish itself calls
 `effects.studio_polish_stages`, so the polish graphs show exactly what ran.
-The page (`static/script.js`, "Step-by-step processing view") only draws;
-it shows the Edited run's steps when the A/B player is on Edited.
+The graphs are on their OWN page, `/steps/<job_id>` (`templates/steps.html`,
+`static/steps.js`), which fetches `/status/<job_id>` and only draws. The
+result's "Open step-by-step graphs" button opens it in the SAME tab; "Back
+to your recording" (history.back() when we came from /, else a link to /)
+returns. The main page restores itself per tab (script.js "Keeping your
+work across pages"): the input WAV Blob in IndexedDB, settings / job ids /
+note edits in sessionStorage (a token ties the two to this tab), result
+audio re-fetched from /status + /audio. With an Edited re-render the link
+adds `?edited=<id>` and the steps page gets a Tuned/Edited switch. Jobs
+live in server memory, so after a server restart only the recording comes back.
 
 ## CRITICAL: Bug history in phase_vocoder.py — read before editing
 

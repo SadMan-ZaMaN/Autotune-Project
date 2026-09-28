@@ -19,6 +19,10 @@ a "trace" dict; build_stages(trace) turns that into one entry per step:
     {"id", "title", "summary", "explain", "stats": [[label, value], ...],
      "charts": [chart, ...]}
 
+"explain" uses a tiny markup the page renders: `backticks` around a formula,
+a blank line ("\n\n") between paragraphs, and a last paragraph starting
+with "Graph: " is shown as the "what to look for in the graph" note.
+
 Only steps that actually RAN are included, so the list depends on the
 style: "Pitch only" has no studio-polish steps, "Hard Tune" (retune 0 ms)
 shows no smoothing in the correction step, "Natural" shows the 80% strength.
@@ -260,11 +264,12 @@ def stage_input(t):
         "id": "input", "title": "Original recording",
         "summary": "Your voice as a sampled signal x[n] - nothing changed yet.",
         "explain": (
-            f"The recording is a list of numbers x[n], one every 1/{sr} s "
-            f"({sr} samples per second, so frequencies up to fs/2 = {sr // 2} Hz can be "
-            "represented - the Nyquist limit). The graph shows its waveform: for every "
-            "pixel column, the lowest and highest sample in that stretch of time. "
-            "Loud parts are sung notes, the thin parts are breaths and pauses."),
+            f"The recording is a list of numbers `x[n]`, one every `1/{sr} s`: {sr} samples "
+            f"per second, so frequencies up to `fs/2 = {sr // 2} Hz` can be represented "
+            "(the Nyquist limit).\n\n"
+            "Graph: the waveform - for every pixel column, the lowest and highest sample in "
+            "that stretch of time. Loud parts are sung notes, the thin parts are breaths and "
+            "pauses."),
         "stats": [["Length", f"{len(audio) / sr:.1f} s"],
                   ["Samples", f"{len(audio):,}"],
                   ["Sample rate", f"{sr} Hz"],
@@ -286,9 +291,9 @@ def stage_noise(t):
             "summary": f"Nothing removed - {info['reason']}.",
             "explain": (
                 "Noise reduction learns the background noise from moments where nobody is "
-                "singing and the level stays steady (a fan, traffic, hiss). This recording "
-                f"had none ({info['reason']}), so it was left exactly as it was - a clean "
-                "take can never be made worse by this step."),
+                "singing and the level stays steady (a fan, traffic, hiss).\n\n"
+                f"This recording had none ({info['reason']}), so it was left exactly as it "
+                "was - a clean take can never be made worse by this step."),
             "stats": [["Result", "unchanged"], ["Reason", info["reason"]]],
             "charts": [{"type": "wave", "title": "Waveform (unchanged)",
                         "duration": round(len(raw) / config.sample_rate, 3),
@@ -308,13 +313,14 @@ def stage_noise(t):
         "id": "denoise", "title": "Noise reduction",
         "summary": "Steady background noise turned down with a Wiener filter, the voice kept.",
         "explain": (
-            "In each STFT frame X[k] = S[k] + D[k] (voice + noise). The noise spectrum |D[k]|^2 "
-            "is measured in the pauses, then every bin is multiplied by the Wiener gain "
-            "G = SNR / (1 + SNR): a voice harmonic (SNR ~ 100) keeps G ~ 1, a bin that is only "
-            f"noise is turned down - never by more than {info['max_reduction_db']:.0f} dB, and "
-            "bins at the harmonics of a sung note are never turned down at all. Compare the "
-            "two spectrograms: the haze between the harmonic lines and in the pauses fades, "
-            "the harmonic lines themselves stay."),
+            "In each STFT frame the spectrum is voice plus noise: `X[k] = S[k] + D[k]`. The "
+            "noise spectrum `|D[k]|^2` is measured in the pauses, then every bin is multiplied "
+            "by the Wiener gain `G = SNR / (1 + SNR)`.\n\n"
+            "A voice harmonic (`SNR ~ 100`) keeps `G ~ 1`; a bin that is only noise is turned "
+            f"down - never by more than {info['max_reduction_db']:.0f} dB - and bins at the "
+            "harmonics of a sung note are never turned down at all.\n\n"
+            "Graph: compare the two spectrograms. The haze between the harmonic lines and in "
+            "the pauses fades; the harmonic lines themselves stay."),
         "stats": [["Noise level", f"{info['noise_db']} dBFS"],
                   ["Max reduction", f"{info['max_reduction_db']:.0f} dB"],
                   ["Pauses (background)", fmt_db(quiet_change)],
@@ -353,12 +359,13 @@ def stage_framing(t):
         "summary": f"Cut into overlapping {N}-sample frames, each tapered by a Hann window.",
         "explain": (
             "Pitch changes over time, so the signal is analysed in short frames that are "
-            f"roughly stationary: N = {N} samples = {N / sr * 1000:.1f} ms, a new one every "
-            f"H = {H} samples ({(N - H) / N * 100:.0f}% overlap). Each frame is multiplied by the "
-            "Hann window w[n] = 0.5 - 0.5 cos(2 pi n / (N-1)), which goes smoothly to 0 at both "
-            "ends: cutting the signal abruptly would add fake high frequencies (spectral "
-            "leakage) to its FFT. The graph shows one frame (the one with the biggest "
-            f"correction, at {frame_time(i, config):.2f} s) before and after windowing."),
+            f"roughly stationary: `N = {N}` samples ({N / sr * 1000:.1f} ms), a new one every "
+            f"`H = {H}` samples ({(N - H) / N * 100:.0f}% overlap).\n\n"
+            "Each frame is multiplied by the Hann window `w[n] = 0.5 - 0.5 cos(2 pi n / (N-1))`, "
+            "which goes smoothly to 0 at both ends. Cutting the signal abruptly would add fake "
+            "high frequencies (spectral leakage) to its FFT.\n\n"
+            "Graph: one frame (the one with the biggest correction, at "
+            f"{frame_time(i, config):.2f} s) before and after windowing."),
         "stats": [["Frame size N", f"{N} ({N / sr * 1000:.1f} ms)"],
                   ["Hop H", f"{H} ({H / sr * 1000:.1f} ms)"],
                   ["Overlap", f"{(N - H) / N * 100:.0f}%"],
@@ -404,13 +411,14 @@ def stage_preemphasis(t):
         "id": "preemphasis", "title": "Pre-emphasis filter",
         "summary": "H(z) = 1 - 0.95 z^-1 tilts the spectrum towards the highs - for the pitch detector only.",
         "explain": (
-            "A first-order FIR filter, y[n] = x[n] - 0.95 x[n-1]. Its zero at z = 0.95 (close to "
-            "z = 1, i.e. DC) cuts low frequencies far more than high ones: -25 dB at 150 Hz but "
-            "only -3 dB at 5 kHz (it only goes above 0 dB near the top of the band). That tilt "
-            "flattens the voice's naturally falling spectrum, so the upper harmonics count as "
-            "much as the fundamental in the autocorrelation. The filtered copy is used ONLY for detecting pitch - the "
-            "audio that gets tuned and saved is never filtered (that used to be a bug: the output "
-            "came out thin and ~7x quieter)."),
+            "A first-order FIR filter, `y[n] = x[n] - 0.95 x[n-1]`. Its zero at `z = 0.95` "
+            "(close to `z = 1`, i.e. DC) cuts low frequencies far more than high ones: -25 dB at "
+            "150 Hz but only -3 dB at 5 kHz (it only goes above 0 dB near the top of the band).\n\n"
+            "That tilt flattens the voice's naturally falling spectrum, so the upper harmonics "
+            "count as much as the fundamental in the autocorrelation.\n\n"
+            "The filtered copy is used ONLY for detecting pitch - the audio that gets tuned and "
+            "saved is never filtered (that used to be a bug: the output came out thin and ~7x "
+            "quieter)."),
         "stats": [["H(z)", "1 - 0.95 z^-1"],
                   ["|H| at 150 Hz", fmt_db(h_at(150))],
                   ["|H| at 1 kHz", fmt_db(h_at(1000))],
@@ -448,14 +456,14 @@ def stage_pitch(t):
         "id": "pitch", "title": "Pitch detection",
         "summary": "Autocorrelation finds how often each frame repeats: f0 = fs / lag.",
         "explain": (
-            "For every frame the autocorrelation r[l] = sum x[n] x[n+l] is computed (via the FFT). "
-            "A periodic voice matches itself best when shifted by one period, so the first "
-            "strong peak at lag l gives f0 = fs / l. Refinements: dividing by the window's own "
-            "autocorrelation (Boersma), an octave guard (take the first peak at least 0.9x the "
-            "best, otherwise it jumps an octave down), parabolic interpolation between lags "
-            "(~0.3 cent accuracy), and a clean-up pass (drop quiet frames and runs shorter than "
-            "4 frames, 5-frame median). Gaps in the line are unvoiced frames: breaths, "
-            "consonants, pauses."),
+            "For every frame the autocorrelation `r[l] = sum x[n] x[n+l]` is computed (via the "
+            "FFT). A periodic voice matches itself best when shifted by one period, so the first "
+            "strong peak at lag `l` gives `f0 = fs / l`.\n\n"
+            "Refinements: dividing by the window's own autocorrelation (Boersma); an octave guard "
+            "(take the first peak at least 0.9x the best, otherwise it jumps an octave down); "
+            "parabolic interpolation between lags (~0.3 cent accuracy); and a clean-up pass "
+            "(drop quiet frames and runs shorter than 4 frames, 5-frame median).\n\n"
+            "Graph: gaps in the line are unvoiced frames - breaths, consonants, pauses."),
         "stats": stats,
         "charts": [{"type": "lines", "title": "Detected pitch f0 per frame",
                     "x_label": "time (s)", "y_label": "Hz", "x_min": 0,
@@ -502,9 +510,9 @@ def stage_key(t):
         "id": "key", "title": "Key + tuning",
         "summary": f"Which notes are allowed: {key_label}.",
         "explain": (
-            "Each voiced frame is turned into a note number, MIDI = 69 + 12 log2(f / 440), and "
-            "counted by pitch class (C, C#, ... B), ignoring slides between notes. "
-            + how + " " + tuning + " Highlighted bars are the notes of the key."),
+            "Each voiced frame is turned into a note number, `MIDI = 69 + 12 log2(f / 440)`, and "
+            "counted by pitch class (C, C#, ... B), ignoring slides between notes.\n\n"
+            + how + "\n\n" + tuning + "\n\nGraph: highlighted bars are the notes of the key."),
         "stats": stats,
         "charts": [{"type": "bars", "title": "How often each note was sung",
                     "labels": NOTE_NAMES,
@@ -531,9 +539,9 @@ def stage_targets(t):
             "The target of a frame is the nearest note of the key. On its own that flips back and "
             "forth when the voice sits between two notes (a warble), so there is hysteresis, like "
             f"a thermostat: the target only changes when the voice is closer to another note by "
-            f"more than {config.note_hysteresis} semitones. The flat amber steps are the targets; "
-            "the blue line is what was sung."
-            + (" Notes you dragged in the editor use your note instead." if edits else "")),
+            f"more than {config.note_hysteresis} semitones."
+            + (" Notes you dragged in the editor use your note instead." if edits else "")
+            + "\n\nGraph: the flat amber steps are the targets; the blue line is what was sung."),
         "stats": stats,
         "charts": [{"type": "lines", "title": "Sung pitch and target note (MIDI)",
                     "x_label": "time (s)", "y_label": "note", "x_min": 0,
@@ -579,17 +587,18 @@ def stage_ratios(t):
         alpha = 1 - np.exp(-(config.hop_size / config.sample_rate * 1000) / retune)
         smoothing = (f"Then the retune speed ({retune:.0f} ms) smooths it with an exponential moving "
                      f"average in log-ratio: each frame moves {alpha * 100:.0f}% of the way to its new "
-                     "value (alpha = 1 - exp(-hop_time / retune_ms)), so notes glide onto pitch "
+                     "value (`alpha = 1 - exp(-hop_time / retune_ms)`), so notes glide onto pitch "
                      "instead of snapping.")
     return {
         "id": "ratios", "title": "Correction amount",
         "summary": f"How far each frame is moved: strength {strength * 100:.0f}%, retune {retune:.0f} ms.",
         "explain": (
-            "The shift for a frame is the ratio r = target / detected (r = 1.059 is one semitone "
-            "up). It is scaled by the correction strength ON A LOG SCALE, r^strength, because "
-            f"pitch is perceived logarithmically - at {strength * 100:.0f}% strength a 50-cent error "
-            f"is corrected by {50 * strength:.0f} cents. " + smoothing +
-            " Shown in cents (100 cents = 1 semitone): grey = the full correction needed, "
+            "The shift for a frame is the ratio `r = target / detected` (`r = 1.059` is one "
+            "semitone up). It is scaled by the correction strength ON A LOG SCALE, "
+            "`r^strength`, because pitch is perceived logarithmically - at "
+            f"{strength * 100:.0f}% strength a 50-cent error is corrected by "
+            f"{50 * strength:.0f} cents.\n\n" + smoothing +
+            "\n\nGraph: in cents (100 cents = 1 semitone) - grey = the full correction needed, "
             "dashed = after strength, amber = what was actually applied."),
         "stats": [["Strength", f"{strength * 100:.0f}%"],
                   ["Retune speed", f"{retune:.0f} ms"],
@@ -642,19 +651,19 @@ def stage_vocoder(t):
     if t["use_phase_vocoder"]:
         explain = (
             "Each frame's FFT is searched for harmonic peaks; each peak's magnitude is MOVED to the "
-            "bin nearest its new frequency r x f (with the bins around it, phase-locked to it), and "
+            "bin nearest its new frequency `r × f` (with the bins around it, phase-locked to it), and "
             "its phase keeps rotating at the new frequency from frame to frame (peak tracking, "
-            "Laroche & Dolson 1999) so overlapping frames still add up coherently. "
+            "Laroche & Dolson 1999) so overlapping frames still add up coherently.\n\n"
             + ("With formant preservation each moved harmonic takes the loudness of the ORIGINAL "
                "spectral envelope at its new place (cepstral smoothing), so the voice's timbre "
-               "doesn't shift with the pitch. " if t["use_formants"] else "")
-            + "Top: one frame's spectrum - the harmonic peaks slide to r times their frequency. "
-            "Bottom: spectrogram of the voice before and after - watch the harmonic lines "
+               "doesn't shift with the pitch.\n\n" if t["use_formants"] else "")
+            + "Graph: top, one frame's spectrum - the harmonic peaks slide to `r` times their "
+            "frequency. Bottom, the spectrogram before and after - watch the harmonic lines "
             "straighten onto the notes.")
     else:
         explain = (
-            "Naive resampling: each frame is read faster or slower (np.interp at positions n x r) "
-            "with no anti-aliasing filter - kept for comparison. It shifts the pitch but also "
+            "Naive resampling: each frame is read faster or slower (`np.interp` at positions "
+            "`n × r`) with no anti-aliasing filter - kept for comparison.\n\nIt shifts the pitch but also "
             "stretches the formants (\"chipmunk\" voice) and can alias.")
     return {
         "id": "vocoder", "title": "Pitch shifting",
@@ -698,10 +707,11 @@ def stage_result(t):
         "explain": (
             "Overlap-add: every shifted frame is windowed again and added at its original "
             f"position (hop {config.hop_size}), then divided by the sum of the squared windows so "
-            "the overlaps don't change the loudness: y[n] = sum_m y_m[n - mH] w[n - mH] / "
-            "sum_m w^2[n - mH]. A frame whose ratio was exactly 1 comes out bit-identical. The "
-            "result is run through the same pitch detector: the amber line should now sit on "
-            "the targets (fully at 100% strength, part-way at lower strengths)."),
+            "the overlaps don't change the loudness:\n\n"
+            "`y[n] = sum_m y_m[n - mH] w[n - mH] / sum_m w^2[n - mH]`\n\n"
+            "A frame whose ratio was exactly 1 comes out bit-identical.\n\n"
+            "Graph: the result run through the same pitch detector - the amber line should now "
+            "sit on the targets (fully at 100% strength, part-way at lower strengths)."),
         "stats": stats,
         "charts": [{"type": "lines", "title": "Pitch before and after tuning (MIDI)",
                     "x_label": "time (s)", "y_label": "note", "x_min": 0,
@@ -735,12 +745,13 @@ def stage_eq(t):
         "id": "eq", "title": "EQ (biquad filters)",
         "summary": "Four 2nd-order IIR filters in a row shape the tone.",
         "explain": (
-            "Each filter is a biquad, H(z) = (b0 + b1 z^-1 + b2 z^-2) / (1 + a1 z^-1 + a2 z^-2), "
-            "designed with the Audio EQ Cookbook formulas: a high-pass at 80 Hz removes rumble "
-            "below the lowest sung note, a small cut at 300 Hz removes 'boxiness', a boost at "
-            "3 kHz adds presence (clearer words) and a shelf above 10 kHz adds 'air'. Filters in "
-            "series multiply their responses, so in dB they ADD - the amber curve is the sum of "
-            "the dashed ones."),
+            "Each filter is a biquad, `H(z) = (b0 + b1 z^-1 + b2 z^-2) / (1 + a1 z^-1 + a2 z^-2)`, "
+            "designed with the Audio EQ Cookbook formulas.\n\n"
+            "A high-pass at 80 Hz removes rumble below the lowest sung note, a small cut at "
+            "300 Hz removes 'boxiness', a boost at 3 kHz adds presence (clearer words) and a "
+            "shelf above 10 kHz adds 'air'.\n\n"
+            "Graph: filters in series multiply their responses, so in dB they ADD - the amber "
+            "curve is the sum of the dashed ones."),
         "stats": [["Filters", "4 biquads (2 poles + 2 zeros each)"],
                   ["At 50 Hz", fmt_db(float(np.interp(50, freqs, total)))],
                   ["At 300 Hz", fmt_db(float(np.interp(300, freqs, total)))],
@@ -776,13 +787,14 @@ def stage_compressor(t):
         "id": "compressor", "title": "Compressor",
         "summary": "Loud parts are turned down (3:1 above -24 dB), so every word is heard.",
         "explain": (
-            "A level meter (square the signal, 10 ms one-pole low-pass: y[n] = (1-c) x^2[n] + "
-            "c y[n-1]) measures the short-term loudness. Above the -24 dB threshold every extra "
-            "3 dB in becomes only 1 dB out (ratio 3:1); far below the singing (under -50 dB: "
-            "hiss, room noise) the level is turned DOWN instead so later boosts don't raise the "
-            "noise. The gain is smoothed (80 ms) so it moves gently. The graph shows that gain; "
-            "the waveforms (scaled to the same peak) show loud and soft parts coming closer "
-            "together."),
+            "A level meter measures the short-term loudness: square the signal, then a 10 ms "
+            "one-pole low-pass, `y[n] = (1-c) x^2[n] + c y[n-1]`.\n\n"
+            "Above the -24 dB threshold every extra 3 dB in becomes only 1 dB out (ratio 3:1); "
+            "far below the singing (under -50 dB: hiss, room noise) the level is turned DOWN "
+            "instead so later boosts don't raise the noise. The gain is smoothed (80 ms) so it "
+            "moves gently.\n\n"
+            "Graph: that gain over time; the waveforms (scaled to the same peak) show loud and "
+            "soft parts coming closer together."),
         "stats": [["Threshold", "-24 dB"], ["Ratio", "3:1"],
                   ["Most reduction", fmt_db(float(np.min(gain)))],
                   ["Typical gain (singing)", fmt_db(float(np.median(gain[gain < -0.5]))) if np.any(gain < -0.5) else "0 dB"]],
@@ -830,13 +842,14 @@ def stage_reverb(t):
         "id": "reverb", "title": "Reverb (convolution)",
         "summary": "y = x + amount x (x * h): the voice convolved with a room's impulse response.",
         "explain": (
-            "A room is an LTI system, so it is fully described by its impulse response h[n] "
-            "(what you'd record after one hand clap). Reverb is then just convolution, y = x * h, "
-            "computed with FFTs (convolution in time = multiplication in frequency) because h is "
-            f"{len(h) / sr:.0f} s = {len(h):,} samples long. h is designed the classic Schroeder way: "
-            "8 feedback comb filters (echoes between walls, each repeat a bit duller) in parallel, "
-            "then 4 all-pass filters that smear every echo into many. Top: h[n]; bottom: the dry "
-            "and the reverberant signal."),
+            "A room is an LTI system, so it is fully described by its impulse response `h[n]` "
+            "(what you'd record after one hand clap). Reverb is then just convolution, "
+            "`y = x * h`, computed with FFTs (convolution in time = multiplication in frequency) "
+            f"because `h` is {len(h) / sr:.0f} s = {len(h):,} samples long.\n\n"
+            "`h` is designed the classic Schroeder way: 8 feedback comb filters (echoes between "
+            "walls, each repeat a bit duller) in parallel, then 4 all-pass filters that smear "
+            "every echo into many.\n\n"
+            "Graph: top, `h[n]`; bottom, the dry and the reverberant signal."),
         "stats": stats,
         "charts": [{"type": "wave", "title": "Impulse response h[n] (first 1.6 s)",
                     "duration": round(len(shown) / sr, 3),
@@ -860,8 +873,8 @@ def stage_final(t):
         "explain": (
             "The whole signal is multiplied by one constant so its highest peak sits at -1 dBFS "
             "(0.891 of full scale): as loud as possible without clipping, with a little headroom "
-            "for MP3 encoding. The graph compares the finished track with your original "
-            "recording."),
+            "for MP3 encoding.\n\n"
+            "Graph: the finished track compared with your original recording."),
         "stats": [["Peak", "-1.0 dBFS"], ["Gain applied", fmt_db(gain)],
                   ["Length", f"{len(final) / sr:.1f} s"]],
         "charts": [{"type": "wave", "title": "Original vs final",

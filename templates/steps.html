@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consonance — How your voice was processed</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314171A'/%3E%3Cpath d='M3 16c3-9 6-9 9 0s6 9 9 0 5-7 8-2' fill='none' stroke='%23E8A33D' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="page-bar">
+  <a class="page-brand" href="/">Consonance</a>
+  <span class="page-bar-title">Step-by-step graphs</span>
+  <a class="btn secondary compact back-link" href="/">&larr; Back to your recording</a>
+</header>
+
+<main class="panel steps-page">
+  <section class="rack output-rack">
+    <h2 class="rack-title"><span class="step">&#9656;</span> How your voice was processed</h2>
+
+    <p class="empty-state" id="page-message" hidden></p>
+
+    <div class="stages" id="stages" hidden>
+      <div class="stages-head">
+        <p class="job-meta" id="job-meta"></p>
+        <div class="ab-switch" id="version-switch" role="radiogroup" aria-label="Which version's steps" hidden>
+          <button type="button" class="ab-option active" data-side="tuned" role="radio" aria-checked="true">Tuned</button>
+          <button type="button" class="ab-option" data-side="edited" role="radio" aria-checked="false">Edited</button>
+        </div>
+      </div>
+      <div class="stages-head">
+        <p class="hint">Every step the signal went through with this style, in order. Pick a step to see what it did to your recording.</p>
+        <span class="stages-meta" id="stages-meta"></span>
+      </div>
+      <div class="stage-steps" id="stage-steps" role="tablist" aria-label="Processing steps"></div>
+      <div class="stage-view" id="stage-view" role="tabpanel" aria-labelledby="stage-title">
+        <div class="stage-top">
+          <h4 class="stage-title" id="stage-title"></h4>
+          <p class="stage-summary" id="stage-summary"></p>
+        </div>
+        <div class="stage-charts" id="stage-charts"></div>
+        <dl class="stage-stats" id="stage-stats"></dl>
+        <div class="stage-explain" id="stage-explain"></div>
+        <div class="stage-nav">
+          <button class="btn secondary compact" id="stage-prev" type="button">&larr; Previous step</button>
+          <button class="btn secondary compact" id="stage-next" type="button">Next step &rarr;</button>
+        </div>
+      </div>
+      <a class="btn secondary back-link bottom" href="/">&larr; Back to your recording</a>
+    </div>
+  </section>
+</main>
+
+<footer class="statusbar">44.1 kHz · frame 2048 · hop 512 · your recording and result are waiting on the main page</footer>
+
+<script src="/static/steps.js"></script>
+</body>
+</html>

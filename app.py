@@ -35,6 +35,10 @@ the same target, see scales.segment_notes). The page draws them as bars you
 can drag up/down; /rerender/<job_id> then re-runs that job - same file, same
 settings - with those notes moved (run_pipeline's note_overrides).
 
+Step-by-step graphs: /steps/<job_id> is a separate page (templates/steps.html,
+static/steps.js) that draws result["stages"] of that job; the main page
+opens it in a new tab.
+
 Run with:  python app.py
 Then open: http://localhost:5001
 """
@@ -168,6 +172,16 @@ def run_job(job_id, input_path, config, options, note_overrides=None):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/steps/<job_id>")
+def steps(job_id):
+    """
+    The step-by-step graphs of one job, on their own page. The page itself
+    fetches /status/<job_id> for the data (result["stages"], built by
+    stage_plots.py), so it works for any finished job the server still has.
+    """
+    return render_template("steps.html")
 
 
 @app.route("/presets")

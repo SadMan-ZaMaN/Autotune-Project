@@ -1,5 +1,5 @@
 // =====================================================================
-// Console — frontend for the pitch-correction pipeline.
+// Consonance — frontend for the pitch-correction pipeline.
 //
 // Flow: (1) get audio (file or microphone) -> decode it IN THE BROWSER and
 // re-encode as a mono 44.1 kHz WAV, so the Python side only ever sees WAV
@@ -7,6 +7,10 @@
 // (2) pick a style preset; (3) POST to /process, poll /status for progress,
 // then play original vs tuned in a sample-synchronised A/B player and draw
 // the pitch graph returned by the server.
+// The graphs of every processing step are on a separate page, /steps
+// (static/steps.js). Leaving for it (or reloading) doesn't lose anything:
+// the recording, settings and result are kept for this tab and restored
+// when you come back (see "Keeping your work across pages").
 // (4) optional note editing: the graph shows one bar per automatic note;
 // dragging bars and pressing "Apply edits" asks the server to re-render the
 // same job with those notes moved (/rerender). The automatic result is kept
@@ -214,7 +218,7 @@ function drawWaveformInto(ctx, w, h, data, color) {
 function drawInputWaveform() {
   if (!inputSamples || inputBlock.hidden) return;
   const { ctx, w, h } = setupCanvas(traceInput);
-  drawWaveformInto(ctx, w, h, inputSamples, cssVar('--steel'));
+  drawWaveformInto(ctx, w, h, inputSamples, cssVar('--voice'));
 }
 
 // ---------- Hero scope ----------
@@ -248,7 +252,7 @@ function drawLiveScope(timeData) {
 }
 
 // ---------- Loading a source ----------
-async function loadSource(blob, name) {
+async function loadSource(blob, name, restoring = false) {
   sourceError.textContent = '';
   dropzoneText.textContent = `Reading ${name}…`;
   runBtn.disabled = true;
@@ -266,6 +270,8 @@ async function loadSource(blob, name) {
     drawInputWaveform();
     runBtn.disabled = false;
     statusLine.textContent = 'Ready — pick a style, then press "Tune my voice".';
+    if (!restoring) saveInput(inputWav, name);
+    return true;
   } catch (err) {
     console.error(err);
     dropzoneText.textContent = 'Drop a recording here, or click to choose';
@@ -457,6 +463,7 @@ scaleRoot.addEventListener('change', () => {
 scaleType.addEventListener('change', updateStatusbar);
 
 function updateStatusbar() {
+  saveSettings();
   const key = scaleRoot.value === 'auto'
     ? 'key auto'
     : `key ${scaleRoot.value} ${scaleType.options[scaleType.selectedIndex].text.toLowerCase()}`;
@@ -550,7 +557,7 @@ runBtn.addEventListener('click', async () => {
 // you can flip back and forth mid-note with no gap and no loss of sync.
 const SIDES = ['original', 'tuned', 'edited'];
 const SIDE_LABELS = { original: 'Original signal', tuned: 'Tuned signal', edited: 'Edited signal' };
-const SIDE_COLORS = { original: '--steel', tuned: '--amber', edited: '--edit' };
+const SIDE_COLORS = { original: '--voice', tuned: '--accent', edited: '--edit' };
 
 const player = {
   buffers: { original: null, tuned: null, edited: null },
@@ -686,7 +693,8 @@ function setSide(side) {
   });
   waveLabel.textContent = SIDE_LABELS[side];
   updateDownloads();
-  renderStages();
+  updateStepsLink();
+  saveState();
   drawOutputBase();
   drawOverlays();
 }
@@ -708,8 +716,10 @@ playBtn.addEventListener('click', () => {
 });
 
 function updatePlayerUI() {
-  iconPlay.hidden = player.playing;
-  iconPause.hidden = !player.playing;
+  // <svg> elements have no .hidden property (it is HTML-only), so toggle the
+  // attribute itself; the CSS rule [hidden] { display: none } then applies.
+  iconPlay.toggleAttribute('hidden', player.playing);
+  iconPause.toggleAttribute('hidden', !player.playing);
   playBtn.setAttribute('aria-label', player.playing ? 'Pause' : 'Play');
   playTime.textContent = `${fmtTime(player.position())} / ${fmtTime(player.duration)}`;
   drawOverlays();
@@ -842,9 +852,9 @@ function pitchGeometry() {
 }
 
 function drawNoteBars(ctx, g) {
-  const steel = cssVar('--steel');
+  const bar = cssVar('--note');
   const edit = cssVar('--edit');
-  ctx.font = `10px ${cssVar('--font-mono') || 'monospace'}`;
+  ctx.font = `11px ${cssVar('--font-mono') || 'monospace'}`;
   ctx.textBaseline = 'middle';
   for (const note of lastResult.notes || []) {
     const x0 = g.xOf(note.start);
@@ -874,10 +884,10 @@ function drawNoteBars(ctx, g) {
       ctx.fillText(label, x0 + width + 3, y + g.barH / 2);
     } else {
       ctx.globalAlpha = 0.22;
-      ctx.fillStyle = steel;
+      ctx.fillStyle = bar;
       ctx.fillRect(x0, yAuto, width, g.barH);
       ctx.globalAlpha = selected ? 1 : 0.7;
-      ctx.strokeStyle = selected ? cssVar('--text') : steel;
+      ctx.strokeStyle = selected ? cssVar('--text') : bar;
       ctx.lineWidth = selected ? 2 : 1;
       ctx.strokeRect(x0 + 0.5, yAuto + 0.5, width - 1, g.barH - 1);
       ctx.globalAlpha = 1;
@@ -892,7 +902,7 @@ function drawPitchBase() {
   const result = lastResult;
   const g = pitchGeometry();
   const muted = cssVar('--text-muted');
-  ctx.font = `10px ${cssVar('--font-mono') || 'monospace'}`;
+  ctx.font = `11px ${cssVar('--font-mono') || 'monospace'}`;
 
   if (!g) {
     ctx.fillStyle = muted;
@@ -912,7 +922,7 @@ function drawPitchBase() {
     const pc = ((m % 12) + 12) % 12;
     const inKey = steps.includes((pc - rootPc + 12) % 12);
     const y = Math.round(yOf(m + offset)) + 0.5;
-    ctx.strokeStyle = inKey ? '#353B42' : '#1D2126';
+    ctx.strokeStyle = inKey ? cssVar('--grid-key') : cssVar('--grid-faint');
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(PITCH_PAD.left, y);
@@ -956,8 +966,8 @@ function drawPitchBase() {
     }
     ctx.stroke();
   };
-  drawTrack(result.pitch.times, result.pitch.detected, cssVar('--steel'), 1.5);
-  drawTrack(result.pitch.times, result.pitch.corrected, cssVar('--amber'), 2);
+  drawTrack(result.pitch.times, result.pitch.detected, cssVar('--voice'), 1.5);
+  drawTrack(result.pitch.times, result.pitch.corrected, cssVar('--accent'), 2);
   if (editedResult) {
     drawTrack(editedResult.pitch.times, editedResult.pitch.corrected, cssVar('--edit'), 2);
   }
@@ -1099,6 +1109,7 @@ function editsKey() {
 }
 
 function updateEditUI() {
+  saveState();
   const count = noteEdits.size;
   const pending = editsKey() !== appliedEditsKey;
   const plural = count === 1 ? '' : 's';
@@ -1126,6 +1137,7 @@ function clearEditedVersion() {
   abEdited.hidden = true;
   if (player.side === 'edited') setSide('tuned');
   updateDownloads();
+  updateStepsLink();
 }
 
 function resetEdits() {
@@ -1211,8 +1223,6 @@ function renderChips(result) {
 
 function showResult(result, originalBuf, tunedBuf) {
   lastResult = result;
-  stageResult = null;
-  stageIndex = 0;
   editedResult = null;
   noteEdits.clear();
   appliedEditsKey = '';
@@ -1231,385 +1241,205 @@ function showResult(result, originalBuf, tunedBuf) {
   if (top > window.innerHeight * 0.6) resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ---------- Step-by-step processing view ----------
-// The server sends result.stages: one entry per processing step that ran
-// (the list depends on the style), each with its numbers, an explanation
-// and 1-2 charts already reduced to plot data (src/autotune/stage_plots.py).
-// This code only draws them. Chart types: wave, lines, bars, spectrogram.
-const stagesEl = $('stages');
-const stagesMeta = $('stages-meta');
-const stageStepsEl = $('stage-steps');
-const stageTitle = $('stage-title');
-const stageSummary = $('stage-summary');
-const stageCharts = $('stage-charts');
-const stageStats = $('stage-stats');
-const stageExplain = $('stage-explain');
-const stagePrev = $('stage-prev');
-const stageNext = $('stage-next');
+// ---------- Link to the step-by-step graphs page ----------
+// The graphs of every processing step live on their own page
+// (/steps/<job_id>, static/steps.js), opened in this same tab - coming
+// back restores everything (see "Keeping your work across pages"). The
+// link opens the version you're listening to; if there is an Edited
+// version the steps page gets a Tuned/Edited switch too.
+const stepsLink = $('steps-link');
+const stepsMeta = $('steps-meta');
 
-let stageResult = null;   // the result whose steps are shown (Tuned or Edited)
-let stageIndex = 0;
-
-const CHART_COLORS = { steel: '--steel', amber: '--amber', edit: '--edit', muted: '--text-muted', text: '--text' };
-const CHART_PAD = { left: 50, right: 12, top: 12, bottom: 28 };
-
-function chartColor(name) {
-  return cssVar(CHART_COLORS[name] || '--text');
+function updateStepsLink() {
+  if (!lastResult) return;
+  const params = new URLSearchParams();
+  params.set('style', lastResult.style_label || 'Custom');
+  if (editedResult) {
+    params.set('edited', editedResult.job_id);
+    if (player.side === 'edited') params.set('side', 'edited');
+  }
+  stepsLink.href = `/steps/${lastResult.job_id}?${params.toString()}`;
+  const count = (player.side === 'edited' && editedResult ? editedResult : lastResult).stages.length;
+  const which = player.side === 'edited' && editedResult ? 'Edited' : 'Tuned';
+  stepsMeta.textContent = `${count} steps · ${which} version · your recording stays here when you come back`;
 }
 
-function escapeHtml(text) {
-  return String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
+// ---------- Keeping your work across pages ----------
+// Going to the step-by-step page (or reloading) replaces this page, and
+// everything above lives only in memory. So, for THIS browser tab:
+//   - the uploaded/recorded track (a WAV Blob, too big for sessionStorage)
+//     goes into IndexedDB,
+//   - the settings, the result's job ids and your note edits go into
+//     sessionStorage (small JSON).
+// On load both are read back: the track is decoded again, and the result
+// is re-fetched from the server (/status + /audio) if it still has it.
+// sessionStorage is per tab and cleared when the tab closes, so the
+// IndexedDB copy is only used when its token matches this tab's session
+// - a NEW tab starts empty, as before. Every storage call is wrapped in
+// try/catch: in a private window it may be unavailable, and the page then
+// simply works as it did without this.
+const SESSION_KEY = 'consonance-session';
+let sessionReady = false;   // nothing is saved until the restore has finished
 
-// "Nice" tick spacing: 1, 2 or 5 times a power of ten, about `count` ticks.
-function niceStep(span, count) {
-  const raw = span / Math.max(1, count);
-  const power = Math.pow(10, Math.floor(Math.log10(raw)));
-  for (const m of [1, 2, 5, 10]) if (m * power >= raw) return m * power;
-  return 10 * power;
-}
-
-function fmtTick(v) {
-  if (Math.abs(v) >= 1000) return `${+(v / 1000).toFixed(1)}k`;
-  if (Math.abs(v) >= 10 || v === 0) return `${Math.round(v)}`;
-  return `${+v.toFixed(2)}`;
-}
-
-function fmtSeconds(t, duration) {
-  return duration < 10 ? `${+t.toFixed(2)} s` : fmtTime(t);
-}
-
-// Plot area + value -> pixel maps. x can be logarithmic (frequency axes).
-function makeFrame(w, h, xMin, xMax, yMin, yMax, xLog) {
-  const plotW = w - CHART_PAD.left - CHART_PAD.right;
-  const plotH = h - CHART_PAD.top - CHART_PAD.bottom;
-  const xOf = xLog
-    ? (x) => CHART_PAD.left + (Math.log(x) - Math.log(xMin)) / (Math.log(xMax) - Math.log(xMin)) * plotW
-    : (x) => CHART_PAD.left + (x - xMin) / (xMax - xMin) * plotW;
-  const yOf = (y) => CHART_PAD.top + (1 - (y - yMin) / (yMax - yMin)) * plotH;
-  return { plotW, plotH, xOf, yOf };
-}
-
-function drawYGrid(ctx, w, f, ticks) {
-  const muted = cssVar('--text-muted');
-  ctx.font = `10px ${cssVar('--font-mono') || 'monospace'}`;
-  ctx.textBaseline = 'middle';
-  let lastY = Infinity;
-  for (const [value, label] of ticks) {
-    const y = Math.round(f.yOf(value)) + 0.5;
-    if (y < CHART_PAD.top - 1 || y > CHART_PAD.top + f.plotH + 1) continue;
-    ctx.strokeStyle = '#23282E';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(CHART_PAD.left, y);
-    ctx.lineTo(w - CHART_PAD.right, y);
-    ctx.stroke();
-    if (Math.abs(lastY - y) >= 12) {   // skip labels that would overlap
-      ctx.fillStyle = muted;
-      ctx.fillText(label, 4, y);
-      lastY = y;
-    }
+function readSession() {
+  try {
+    return JSON.parse(sessionStorage.getItem(SESSION_KEY)) || {};
+  } catch (err) {
+    return {};
   }
 }
 
-function drawXAxis(ctx, h, f, ticks) {
-  ctx.fillStyle = cssVar('--text-muted');
-  ctx.font = `10px ${cssVar('--font-mono') || 'monospace'}`;
-  ctx.textBaseline = 'alphabetic';
-  let lastX = -Infinity;
-  for (const [value, label] of ticks) {
-    const x = f.xOf(value);
-    if (x < CHART_PAD.left - 1 || x > CHART_PAD.left + f.plotW + 1) continue;
-    const width = ctx.measureText(label).width;
-    const left = Math.max(CHART_PAD.left, Math.min(x - width / 2, CHART_PAD.left + f.plotW - width));
-    if (left < lastX + 8) continue;
-    ctx.fillText(label, left, h - 8);
-    lastX = left + width;
+function writeSession(update) {
+  try {
+    const current = readSession();
+    if (!current.token) current.token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    Object.assign(current, update);
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(current));
+    return current;
+  } catch (err) {
+    return null;
   }
 }
 
-function linearTicks(min, max, count, format) {
-  const step = niceStep(max - min, count);
-  const ticks = [];
-  for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-6; v += step) {
-    const value = Math.abs(v) < step * 1e-6 ? 0 : v;
-    ticks.push([value, format ? format(value) : fmtTick(value)]);
-  }
-  return ticks;
-}
-
-function logTicks(min, max) {
-  const ticks = [];
-  for (let p = Math.floor(Math.log10(min)); p <= Math.ceil(Math.log10(max)); p++) {
-    for (const m of [1, 2, 5]) {
-      const v = m * Math.pow(10, p);
-      if (v >= min && v <= max) ticks.push([v, fmtTick(v)]);
-    }
-  }
-  return ticks;
-}
-
-function timeTicks(duration, plotW) {
-  return linearTicks(0, duration, Math.max(2, Math.floor(plotW / 80)), (t) => fmtSeconds(t, duration));
-}
-
-function drawWaveChart(canvas, chart) {
-  const { ctx, w, h } = setupCanvas(canvas);
-  ctx.clearRect(0, 0, w, h);
-  let peak = 1e-6;
-  for (const s of chart.series) {
-    for (let i = 0; i < s.min.length; i++) peak = Math.max(peak, Math.abs(s.min[i]), Math.abs(s.max[i]));
-  }
-  const f = makeFrame(w, h, 0, chart.duration, -peak * 1.05, peak * 1.05, false);
-  drawYGrid(ctx, w, f, [[-peak, fmtTick(-peak)], [0, '0'], [peak, fmtTick(peak)]]);
-  drawXAxis(ctx, h, f, timeTicks(chart.duration, f.plotW));
-  chart.series.forEach((s, index) => {
-    ctx.strokeStyle = chartColor(s.color);
-    ctx.globalAlpha = index === 0 ? 0.9 : 0.75;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const n = s.min.length;
-    for (let i = 0; i < n; i++) {
-      const x = CHART_PAD.left + (i + 0.5) / n * f.plotW;
-      ctx.moveTo(x, f.yOf(s.max[i]));
-      ctx.lineTo(x, f.yOf(s.min[i]) + 0.5);
-    }
-    ctx.stroke();
-  });
-  ctx.globalAlpha = 1;
-}
-
-function drawLinesChart(canvas, chart) {
-  const { ctx, w, h } = setupCanvas(canvas);
-  ctx.clearRect(0, 0, w, h);
-  const f = makeFrame(w, h, chart.x_min, chart.x_max, chart.y_min, chart.y_max, chart.x_log);
-  const yTicks = chart.y_ticks || linearTicks(chart.y_min, chart.y_max, Math.max(3, Math.floor(f.plotH / 40)));
-  drawYGrid(ctx, w, f, yTicks);
-  let xTicks;
-  if (chart.x_log) xTicks = logTicks(chart.x_min, chart.x_max);
-  else if (chart.x_label.startsWith('time (s)')) xTicks = timeTicks(chart.x_max, f.plotW);
-  else xTicks = linearTicks(chart.x_min, chart.x_max, Math.max(2, Math.floor(f.plotW / 80)));
-  drawXAxis(ctx, h, f, xTicks);
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(CHART_PAD.left, CHART_PAD.top, f.plotW, f.plotH);
-  ctx.clip();
-  for (const s of chart.series) {
-    ctx.strokeStyle = chartColor(s.color);
-    ctx.lineWidth = s.width || 1.5;
-    ctx.lineJoin = 'round';
-    ctx.setLineDash(s.dash ? [5, 4] : []);
-    ctx.beginPath();
-    let penDown = false;
-    let prevY = null;
-    let prevV = null;
-    for (let i = 0; i < s.x.length; i++) {
-      const v = s.y[i];
-      if (v === null || v === undefined) { penDown = false; prevV = null; continue; }
-      const x = f.xOf(s.x[i]);
-      const y = f.yOf(v);
-      // an octave glitch in the pitch track: lift the pen instead of drawing a spike
-      const jumped = penDown && prevV !== null && (
-        (s.max_jump && Math.abs(v - prevV) > s.max_jump) ||
-        (s.jump_ratio && Math.max(v / prevV, prevV / v) > s.jump_ratio));
-      prevV = v;
-      if (!penDown || jumped) ctx.moveTo(x, y);
-      else if (s.step) { ctx.lineTo(x, prevY); ctx.lineTo(x, y); }   // hold the value, then jump
-      else ctx.lineTo(x, y);
-      penDown = true;
-      prevY = y;
-    }
-    ctx.stroke();
-  }
-  ctx.restore();
-  ctx.setLineDash([]);
-}
-
-function drawBarsChart(canvas, chart) {
-  const { ctx, w, h } = setupCanvas(canvas);
-  ctx.clearRect(0, 0, w, h);
-  const top = Math.max(1, ...chart.values) * 1.18;
-  const f = makeFrame(w, h, 0, chart.values.length, 0, top, false);
-  drawYGrid(ctx, w, f, linearTicks(0, top, 4, (v) => `${fmtTick(v)}%`));
-  const slot = f.plotW / chart.values.length;
-  ctx.font = `10px ${cssVar('--font-mono') || 'monospace'}`;
-  chart.values.forEach((v, i) => {
-    const x = CHART_PAD.left + i * slot + slot * 0.18;
-    const bw = slot * 0.64;
-    const y = f.yOf(v);
-    ctx.fillStyle = chart.highlight[i] ? cssVar('--amber') : 'rgba(92, 137, 172, 0.45)';
-    ctx.fillRect(x, y, bw, f.yOf(0) - y);
-    ctx.fillStyle = cssVar('--text-muted');
-    ctx.textBaseline = 'alphabetic';
-    const label = chart.labels[i];
-    ctx.fillText(label, x + bw / 2 - ctx.measureText(label).width / 2, h - 8);
-    if (v > 0 && bw > 18) {
-      const text = `${Math.round(v)}`;
-      ctx.fillText(text, x + bw / 2 - ctx.measureText(text).width / 2, y - 4);
-    }
+function openInputStore() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('consonance', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('input');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
   });
 }
 
-// 0..255 -> colour: dark -> steel -> amber -> near white (the page's palette)
-const SPEC_LUT = (() => {
-  const stops = [[0, [16, 18, 21]], [0.4, [31, 58, 82]], [0.65, [92, 137, 172]], [0.85, [232, 163, 61]], [1, [255, 243, 214]]];
-  const lut = [];
-  for (let i = 0; i < 256; i++) {
-    const t = i / 255;
-    let k = 0;
-    while (k < stops.length - 2 && t > stops[k + 1][0]) k++;
-    const [t0, c0] = stops[k];
-    const [t1, c1] = stops[k + 1];
-    const u = (t - t0) / (t1 - t0);
-    lut.push([0, 1, 2].map((j) => Math.round(c0[j] + (c1[j] - c0[j]) * u)));
+async function saveInput(wav, name) {
+  const session = writeSession({ inputName: name });
+  if (!session) return;
+  try {
+    const db = await openInputStore();
+    db.transaction('input', 'readwrite').objectStore('input').put({ token: session.token, name, wav }, 'current');
+  } catch (err) {
+    console.warn('Could not keep the recording for this tab:', err);
   }
-  return lut;
-})();
+}
 
-function drawSpectrogramChart(canvas, chart) {
-  const { ctx, w, h } = setupCanvas(canvas);
-  ctx.clearRect(0, 0, w, h);
-  const gap = 16;
-  const count = chart.panels.length;
-  const plotW = w - CHART_PAD.left - CHART_PAD.right;
-  const panelH = (h - CHART_PAD.top - CHART_PAD.bottom - gap * (count - 1)) / count;
-  const muted = cssVar('--text-muted');
-  ctx.font = `10px ${cssVar('--font-mono') || 'monospace'}`;
+async function loadSavedInput(token) {
+  try {
+    const db = await openInputStore();
+    const record = await new Promise((resolve, reject) => {
+      const request = db.transaction('input').objectStore('input').get('current');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return record && record.token === token ? record : null;
+  } catch (err) {
+    return null;
+  }
+}
 
-  chart.panels.forEach((panel, p) => {
-    const top = CHART_PAD.top + p * (panelH + gap);
-    // decode the 8-bit image (row 0 = lowest frequency) into pixels
-    const bytes = Uint8Array.from(atob(panel.data), (c) => c.charCodeAt(0));
-    const img = new ImageData(panel.cols, panel.rows);
-    for (let r = 0; r < panel.rows; r++) {
-      const outRow = panel.rows - 1 - r;   // high frequencies at the top
-      for (let c = 0; c < panel.cols; c++) {
-        const rgb = SPEC_LUT[bytes[r * panel.cols + c]];
-        const o = (outRow * panel.cols + c) * 4;
-        img.data[o] = rgb[0];
-        img.data[o + 1] = rgb[1];
-        img.data[o + 2] = rgb[2];
-        img.data[o + 3] = 255;
+function saveSettings() {
+  if (!sessionReady) return;
+  writeSession({
+    settings: {
+      preset: activePreset,
+      strength: strengthSlider.value, retune: retuneSlider.value, reverb: reverbSlider.value,
+      noise: noiseSlider.value, polish: usePolish.checked, follow: useFollow.checked,
+      formant: useFormant.checked, vocoder: usePhaseVocoder.checked, preemphasis: usePreemphasis.checked,
+      root: scaleRoot.value, type: scaleType.value,
+    },
+  });
+}
+
+function saveState() {
+  if (!sessionReady) return;
+  writeSession({
+    jobId: lastResult ? lastResult.job_id : null,
+    styleLabel: lastResult ? lastResult.style_label : null,
+    editedJobId: editedResult ? editedResult.job_id : null,
+    side: player.side,
+    edits: Array.from(noteEdits.entries()),
+  });
+}
+
+function restoreSettings(saved) {
+  if (saved.preset && presets[saved.preset]) applyPreset(saved.preset);
+  strengthSlider.value = saved.strength;
+  retuneSlider.value = saved.retune;
+  reverbSlider.value = saved.reverb;
+  noiseSlider.value = saved.noise;
+  usePolish.checked = saved.polish;
+  useFollow.checked = saved.follow;
+  useFormant.checked = saved.formant;
+  usePhaseVocoder.checked = saved.vocoder;
+  usePreemphasis.checked = saved.preemphasis;
+  scaleRoot.value = saved.root;
+  scaleType.value = saved.type;
+  scaleType.disabled = scaleRoot.value === 'auto';
+  activePreset = saved.preset && presets[saved.preset] ? saved.preset : null;
+  updateReadouts();
+  markActivePreset();
+}
+
+async function fetchFinishedResult(jobId) {
+  const res = await fetch(`/status/${encodeURIComponent(jobId)}`);
+  if (!res.ok) return null;
+  const job = await res.json();
+  return job.state === 'done' ? job.result : null;
+}
+
+async function restoreResult(session) {
+  const result = await fetchFinishedResult(session.jobId);
+  if (!result) return false;
+  const [originalBuf, tunedBuf] = await Promise.all([
+    fetchAndDecode(result.original_url),
+    fetchAndDecode(result.output_url),
+  ]);
+  result.style_label = session.styleLabel || 'Custom';
+  showResult(result, originalBuf, tunedBuf);
+
+  if (session.editedJobId) {
+    const edited = await fetchFinishedResult(session.editedJobId);
+    if (edited) {
+      edited.style_label = result.style_label;
+      editedResult = edited;
+      for (const o of edited.overrides || []) noteEdits.set(`${o.start_frame}:${o.end_frame}`, o.semitones);
+      appliedEditsKey = editsKey();
+      player.setEdited(await fetchAndDecode(edited.output_url));
+      abEdited.hidden = false;
+    }
+  }
+  // edits that were dragged but not applied yet
+  noteEdits.clear();
+  for (const [key, semitones] of session.edits || []) noteEdits.set(key, semitones);
+  setSide(session.side === 'edited' && editedResult ? 'edited' : 'tuned');
+  updateEditUI();
+  redrawPitch();
+  return true;
+}
+
+async function restoreSession() {
+  const session = readSession();
+  try {
+    if (session.settings) restoreSettings(session.settings);
+    if (session.token && session.inputName) {
+      const saved = await loadSavedInput(session.token);
+      if (saved && await loadSource(saved.wav, saved.name, true)) {
+        statusLine.textContent = 'Your recording is back — pick a style, then press "Tune my voice".';
+        if (session.jobId) {
+          if (await restoreResult(session)) {
+            statusLine.textContent = 'Welcome back — your recording and result are as you left them.';
+          } else {
+            statusLine.textContent = 'Your recording is back. The result is gone (the server restarted) — press "Tune my voice" again.';
+          }
+        }
       }
     }
-    const off = document.createElement('canvas');
-    off.width = panel.cols;
-    off.height = panel.rows;
-    off.getContext('2d').putImageData(img, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(off, CHART_PAD.left, top, plotW, panelH);
-
-    // log-frequency axis
-    const yOf = (freq) => top + (1 - (Math.log(freq) - Math.log(chart.fmin)) / (Math.log(chart.fmax) - Math.log(chart.fmin))) * panelH;
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = muted;
-    let lastY = Infinity;
-    for (const [freq, label] of logTicks(chart.fmin, chart.fmax)) {
-      const y = yOf(freq);
-      if (Math.abs(lastY - y) < 11) continue;
-      ctx.fillText(`${label}`, 4, y);
-      lastY = y;
-    }
-    // panel name, on a dark chip so it reads over the image
-    ctx.textBaseline = 'top';
-    const tw = ctx.measureText(panel.label).width;
-    ctx.fillStyle = 'rgba(16, 18, 21, 0.8)';
-    ctx.fillRect(CHART_PAD.left + 4, top + 4, tw + 10, 16);
-    ctx.fillStyle = cssVar('--text');
-    ctx.fillText(panel.label, CHART_PAD.left + 9, top + 7);
-  });
-  const f = makeFrame(w, h, 0, chart.duration, 0, 1, false);
-  drawXAxis(ctx, h, f, timeTicks(chart.duration, plotW));
-  ctx.textBaseline = 'alphabetic';
-}
-
-const CHART_DRAWERS = { wave: drawWaveChart, lines: drawLinesChart, bars: drawBarsChart, spectrogram: drawSpectrogramChart };
-
-function chartLegend(chart) {
-  let items = [];
-  if (chart.series) {
-    items = chart.series.map((s) => {
-      const color = chartColor(s.color);
-      const swatch = s.dash ? `<i class="dash" style="border-color:${color}"></i>` : `<i style="background:${color}"></i>`;
-      return `<span class="lg">${swatch}${escapeHtml(s.label)}</span>`;
-    });
-  } else if (chart.type === 'bars') {
-    items = [`<span class="lg"><i style="background:${cssVar('--amber')}"></i>in the key</span>`,
-      `<span class="lg"><i style="background:rgba(92,137,172,0.45)"></i>not in the key</span>`];
-  } else if (chart.type === 'spectrogram') {
-    items = [`<span class="lg">brighter = louder · ${chart.db_range} dB range · log frequency</span>`];
+  } catch (err) {
+    console.error('Could not restore the previous state:', err);
+  } finally {
+    sessionReady = true;
+    updateStatusbar();
+    saveState();
   }
-  return `<span class="stage-legend">${items.join('')}</span>`;
 }
-
-function drawStageCharts() {
-  const stage = stageResult && stageResult.stages ? stageResult.stages[stageIndex] : null;
-  if (!stage) return;
-  stageCharts.querySelectorAll('canvas').forEach((canvas, i) => {
-    const chart = stage.charts[i];
-    CHART_DRAWERS[chart.type](canvas, chart);
-  });
-}
-
-function showStage(index) {
-  const stages = stageResult.stages;
-  stageIndex = Math.max(0, Math.min(stages.length - 1, index));
-  const stage = stages[stageIndex];
-  stageStepsEl.querySelectorAll('.stage-step').forEach((el, i) => {
-    const on = i === stageIndex;
-    el.classList.toggle('active', on);
-    el.setAttribute('aria-selected', on ? 'true' : 'false');
-    el.tabIndex = on ? 0 : -1;
-  });
-  stageTitle.textContent = `${String(stageIndex + 1).padStart(2, '0')} · ${stage.title}`;
-  stageSummary.textContent = stage.summary;
-  stageCharts.innerHTML = stage.charts.map((chart) => {
-    const tall = chart.type === 'spectrogram' ? ' tall' : '';
-    return `<div class="stage-chart"><div class="stage-chart-label"><span>${escapeHtml(chart.title)}</span>${chartLegend(chart)}</div>` +
-      `<canvas class="stage-canvas${tall}" role="img" aria-label="${escapeHtml(chart.title)}"></canvas></div>`;
-  }).join('');
-  stageStats.innerHTML = stage.stats.map(([label, value]) =>
-    `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
-  stageExplain.textContent = stage.explain;
-  stagePrev.disabled = stageIndex === 0;
-  stageNext.disabled = stageIndex === stages.length - 1;
-  drawStageCharts();
-}
-
-// Shows the steps of the version you're listening to (Tuned, or Edited
-// once there is one), staying on the same step when switching.
-function renderStages() {
-  const source = player.side === 'edited' && editedResult ? editedResult : lastResult;
-  if (!source || !source.stages) { stagesEl.hidden = true; return; }
-  stagesEl.hidden = false;
-  const previousId = stageResult && stageResult.stages[stageIndex] ? stageResult.stages[stageIndex].id : null;
-  const changed = source !== stageResult;
-  stageResult = source;
-  const label = source === editedResult ? `${source.style_label || 'Custom'} + your edits` : (source.style_label || 'Custom');
-  stagesMeta.textContent = `${label} · ${source.stages.length} steps`;
-  if (changed) {
-    stageStepsEl.innerHTML = source.stages.map((stage, i) =>
-      `<button type="button" class="stage-step" role="tab" data-index="${i}">` +
-      `<span class="num">${String(i + 1).padStart(2, '0')}</span>${escapeHtml(stage.title)}</button>`).join('');
-  }
-  let index = source.stages.findIndex((s) => s.id === previousId);
-  if (index < 0) index = changed && previousId ? 0 : stageIndex;
-  showStage(index);
-}
-
-stageStepsEl.addEventListener('click', (e) => {
-  const btn = e.target.closest('.stage-step');
-  if (btn) showStage(Number(btn.dataset.index));
-});
-stageStepsEl.addEventListener('keydown', (e) => {
-  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-  e.preventDefault();
-  showStage(stageIndex + (e.key === 'ArrowRight' ? 1 : -1));
-  stageStepsEl.querySelectorAll('.stage-step')[stageIndex].focus();
-});
-stagePrev.addEventListener('click', () => showStage(stageIndex - 1));
-stageNext.addEventListener('click', () => showStage(stageIndex + 1));
 
 // ---------- Resize ----------
 let resizeTimer = null;
@@ -1622,7 +1452,6 @@ window.addEventListener('resize', () => {
       drawOutputBase();
       drawPitchBase();
       drawOverlays();
-      drawStageCharts();
     }
   }, 120);
 });
@@ -1630,4 +1459,5 @@ window.addEventListener('resize', () => {
 // ---------- Start ----------
 drawIdleScope();
 updateReadouts();
-loadPresets();
+// presets first (they set the sliders), then put back what this tab had
+loadPresets().then(restoreSession);
