@@ -291,16 +291,25 @@ Resolved (kept here so nobody re-investigates):
 - Repo made presentable (Oct 2026): README rewritten, MIT LICENSE, GitHub
   Actions CI. The old root scripts test_naive_shift.py, test_phase_vocoder.py
   and check_duration.py were deleted (superseded by tests/; in git history).
-- docs/media (GIF, demo mp4, screenshots) uses "City Life (Pella)" by Donnie
-  Ozone (ccmixter.org/files/donnieozone/46692, CC BY 3.0, the dry 24-bit
-  WAV from the upload's zip), NOT the recordings in data/raw: those are
-  Sadman's own voice and must never be published. CC BY = keep the credit
-  (README "Hear it" + "License", and the video footer). Video = 14-22 s of
-  the song; UI shots = its first 40 s. README numbers on the whole vocal
-  (app's own detector, input vs output): median 24.6 -> 15.6 c (Studio Pop)
-  / 10.2 c (Hard Tune) from the target. Auto-key -> chromatic on it, and the
-  tuning offset was +41 c on the whole song but -28 c on the 40 s excerpt
-  (open item 4 below, seen again).
+- docs/media (GIF, demo mp4, screenshots) uses "I Miss You" by Madam
+  Snowflake (ccmixter.org/files/snowflake/29407, CC BY 3.0, the 24-bit mono
+  "Pella - flac"), NOT the recordings in data/raw: those are Sadman's own
+  voice (and data/raw/Payphone.mp3 is Maroon 5 = copyrighted) and must never
+  be published. CC BY = keep the credit (README "Hear it" + "License", and
+  the video footer). Video = 0.3-8.9 s (chosen to contain no held
+  out-of-key notes); UI shots = its first 40 s. README numbers on the whole
+  vocal (app's own detector, input vs output): median 22.1 -> 7.7 c (Studio
+  Pop) / 4.1 c (Hard Tune) from the target. Whole song: A major, offset
+  +3.8 c, circular R = 0.17; the 40 s excerpt is detected as C# minor.
+  ~11% of its sung frames are moved > 60 c: mostly slides/onsets, but ~180
+  frames are HELD notes outside A major (C natural held -> pushed to B,
+  F -> E): a real "wrong note" weakness for singers who use blue notes.
+- Rejected demo vocal: "City Life (Pella)" by Donnie Ozone (half-rapped).
+  The user said both original and tuned sounded bad. Measured why: tuning
+  R = 0.02 (no consistent offset) yet the offset estimate applied +41 c
+  (-28 c on a 40 s excerpt) -> open item 4 is real on real data; and
+  15.7 target changes per second of singing (rap) -> constant warble.
+  Autotune needs sung melodies; rap is a poor demo input.
 - VS Code's built-in video preview plays the mp4 SILENTLY: its ffmpeg.dll
   has H.264 but no AAC decoder. Browsers / GitHub / Media Player are fine.
 

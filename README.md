@@ -34,16 +34,15 @@ A sessional project for **CSE 220: Signals and Linear Systems** by
 docs/media/demo_before_after.mp4 into the editor, and put the link GitHub
 generates (https://github.com/user-attachments/assets/...) on its own line here. -->
 
-[![Before/after demo video: one phrase of a hip-hop vocal as recorded, with Studio Pop, and with Hard Tune](docs/media/demo_thumbnail.png)](docs/media/demo_before_after.mp4)
+[![Before/after demo video: the opening phrase of a pop ballad as recorded, with Studio Pop, and with Hard Tune](docs/media/demo_thumbnail.png)](docs/media/demo_before_after.mp4)
 
-Eight seconds of a half-sung, half-rapped hip-hop vocal, played three times:
-the **original** recording, the **Studio Pop** style (in tune, still
-natural), and **Hard Tune** (the robotic "T-Pain" sound of melodic rap). Blue
-is the pitch that was sung, amber is the pitch after tuning, and the grid lines
-are the notes.
+The opening phrase of a pop ballad, played three times: the **original**
+recording, the **Studio Pop** style (in tune, still natural), and **Hard Tune**
+(the robotic "T-Pain" effect, where every note snaps flat). Blue is the pitch
+that was sung, amber is the pitch after tuning, and the grid lines are the notes.
 
-<sub>Demo vocal: ["City Life (Pella)"](https://ccmixter.org/files/donnieozone/46692)
-by Donnie Ozone, from ccMixter, licensed
+<sub>Demo vocal: ["I Miss You"](https://ccmixter.org/files/snowflake/29407)
+by Madam Snowflake, from ccMixter, licensed
 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). The versions in this
 repo are pitch-corrected by Consonance.</sub>
 
@@ -174,17 +173,16 @@ vibrato, glides and consonants, against an ideal re-synthesis:
 | Speed | 1× | **≈3× faster** |
 | Clarity lost on a real recording (shifts of ×0.97 to ×1.06) | 3.2–4.1 dB | **≈0 dB** |
 
-**On the demo vocal** (the whole 2-minute "City Life"; pitch measured by the
+**On the demo vocal** (the whole 3½-minute "I Miss You"; pitch measured by the
 app's own detector, before vs. after):
 
 | | Original | Studio Pop | Hard Tune |
 |---|---|---|---|
-| Median distance from the target note | 24.6 cents | **15.6 cents** | **10.2 cents** |
-| Sung frames within 10 cents of the note | 21 % | **35 %** | **50 %** |
+| Median distance from the target note | 22.1 cents | **7.7 cents** | **4.1 cents** |
+| Sung frames within 10 cents of the note | 25 % | **58 %** | **76 %** |
 
-Studio Pop deliberately keeps some of the singer's slides and takes 30 ms to
-glide between notes; Hard Tune snaps instantly. A half-rapped vocal is a hard
-case: it is full of short syllables and slides that never settle on one note.
+Studio Pop deliberately keeps some of the singer's vibrato and takes 30 ms to
+glide between notes; Hard Tune snaps instantly.
 
 **Other stages:**
 
@@ -299,6 +297,6 @@ The code is [MIT](LICENSE) © 2026 Sadman Zaman and Arib Rajin Shahan.
 
 The demo audio in [`docs/media/`](docs/media/) is not covered by the MIT
 license. It is a pitch-corrected version of
-["City Life (Pella)"](https://ccmixter.org/files/donnieozone/46692) by
-Donnie Ozone, used under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
+["I Miss You"](https://ccmixter.org/files/snowflake/29407) by
+Madam Snowflake, used under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
 Keep that credit if you reuse it.
