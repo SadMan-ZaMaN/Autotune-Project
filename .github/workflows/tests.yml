@@ -1,0 +1,28 @@
+# Runs the full regression suite (tests/) on every push and pull request.
+# The tests generate their own synthetic signals, so no audio files are needed.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the regression tests
+        run: python -m unittest discover tests -v

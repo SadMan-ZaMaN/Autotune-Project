@@ -1,7 +1,7 @@
 # Autotune / Pitch Correction System — Project Context
 
 CSE 220 (Signals and Linear Systems) Sessional Project.
-Team "Cells Interlinked" — Sadman (2305068), Rajin (2305075).
+Team "Cells Interlinked" — Rajin (2305068), Sadman (2305075).
 
 Read this whole file before making changes. It contains hard-won context —
 especially the "Critical Bug History" section — that took a long debugging
@@ -33,7 +33,7 @@ conventions" below.
 pip install -r requirements.txt
 python main.py              # basic framing/OLA test
 python run_demo.py          # CLI pipeline demo, edit variables at top of file
-python app.py                # web UI, open http://localhost:5000
+python app.py                # web UI, open http://localhost:5001
 python -m unittest discover tests -v   # ALL regression tests (44) - run after any DSP change
 ```
 
@@ -76,6 +76,10 @@ autotune-project/
 ├── tests/test_noise_reduction.py # voice-safety of noise reduction + noisy full pipeline
 ├── tests/test_stage_plots.py     # step graphs: audio unchanged, per-style step lists, chart numbers
 ├── CONTRACTS.md            # team interface agreement (updated for attempt 4)
+├── README.md               # public GitHub page: demo media, pipeline diagram, results, team
+├── LICENSE                 # MIT (Sadman Zaman + Arib Rajin Shahan)
+├── .github/workflows/tests.yml  # CI: runs the whole tests/ suite on every push / PR
+├── docs/media/             # README media (GIF, demo mp4 + thumbnail, UI screenshots)
 └── data/raw, data/processed  # audio in/out - ALL audio gitignored (only .gitkeep tracked);
                               #   regenerate data/raw/test_voice.wav with gen_test_tone.py
 ```
@@ -283,6 +287,22 @@ Resolved (kept here so nobody re-investigates):
 - CONTRACTS.md: updated for attempt 4 + new functions.
 - Frontend visually verified with Playwright + Edge screenshots at 1440 px
   and 390 px (no horizontal scroll).
+- `__pycache__/*.pyc` are no longer tracked (removed in fa34f02, ignored).
+- Repo made presentable (Oct 2026): README rewritten, MIT LICENSE, GitHub
+  Actions CI. The old root scripts test_naive_shift.py, test_phase_vocoder.py
+  and check_duration.py were deleted (superseded by tests/; in git history).
+- docs/media (GIF, demo mp4, screenshots) uses "City Life (Pella)" by Donnie
+  Ozone (ccmixter.org/files/donnieozone/46692, CC BY 3.0, the dry 24-bit
+  WAV from the upload's zip), NOT the recordings in data/raw: those are
+  Sadman's own voice and must never be published. CC BY = keep the credit
+  (README "Hear it" + "License", and the video footer). Video = 14-22 s of
+  the song; UI shots = its first 40 s. README numbers on the whole vocal
+  (app's own detector, input vs output): median 24.6 -> 15.6 c (Studio Pop)
+  / 10.2 c (Hard Tune) from the target. Auto-key -> chromatic on it, and the
+  tuning offset was +41 c on the whole song but -28 c on the 40 s excerpt
+  (open item 4 below, seen again).
+- VS Code's built-in video preview plays the mp4 SILENTLY: its ffmpeg.dll
+  has H.264 but no AAC decoder. Browsers / GitHub / Media Player are fine.
 
 Still open:
 1. **No human listening test yet.** All quality claims above are
@@ -291,12 +311,9 @@ Still open:
 2. Only one real recording exists (data/raw/upload_*.wav, 32 s, male,
    chromatic-ish). A second real sung recording as a test fixture would
    help, especially a female voice and a clearly diatonic song.
-3. Pre-existing hygiene: `__pycache__/*.pyc` files are
-   tracked in git (a .gitignore now exists but does not untrack them;
-   `git rm --cached` them if the team agrees).
-4. Preset numbers (strength/retune/reverb) were chosen from the metrics
+3. Preset numbers (strength/retune/reverb) were chosen from the metrics
    and common autotune practice, not tuned by ear.
-5. `estimate_tuning_offset` is unstable when the singer has no consistent
+4. `estimate_tuning_offset` is unstable when the singer has no consistent
    offset: the real recordings have circular resultant length R = 0.02 /
    0.11 (a consistently-sharp synthetic singer: 0.26-0.66). On
    upload_c1b5a2e5 random 90% subsets of the SAME frames give 3..19 cents,
